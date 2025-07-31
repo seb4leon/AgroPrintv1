@@ -1,0 +1,58 @@
+# Archivos que NO deben subirse a GitHub
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.mypy_cache
+.pytest_cache
+.hypothesis
+
+# Entorno virtual
+.venv/
+venv/
+ENV/
+
+# Archivos del sistema
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Archivos temporales
+*.tmp
+*.temp
+~$*
+
+# Archivos de configuración local
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Resultados de exportación (para mantener el repo limpio)
+resultados_*.xlsx
+reporte_*.pdf
+*.png
+*.jpg
+*.jpeg
+
+# Archivos de prueba locales
+test_output/
+temp_files/
