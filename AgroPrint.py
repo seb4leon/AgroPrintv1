@@ -411,28 +411,151 @@ def get_unique_key():
 
 # --- DATOS DE ENTRADA ---
 st.set_page_config(layout="wide")
-st.title("AgroPrint Calculadora de huella de carbono para productos agrícolas")
 
-st.markdown("""
-<div style="border: 2px solid #1976d2; border-radius: 8px; padding: 1.2em; background-color: #f0f7ff;">
-<span style="font-size:1.3em; font-weight:bold; text-decoration:underline;">
-Bienvenido/a a AgroPrint, la calculadora de huella de carbono para productos frutícolas
-</span>
-<br><br>
-Esta herramienta permite estimar la huella de carbono de sistemas productivos frutícolas bajo el enfoque <b>"cradle-to-farm gate"</b> (de la cuna a la puerta de la granja), siguiendo metodologías reconocidas como PAS 2050 y los lineamientos del IPCC 2006/2019 para el sector AFOLU.<br><br>
+def mostrar_bienvenida():
+    """Página de bienvenida con información general"""
+    st.title("AgroPrint - Calculadora de huella de carbono para productos frutícolas")
+    
+    st.markdown("""
+<div style="border: 2px solid #1976d2; border-radius: 12px; padding: 1.5em; background: linear-gradient(135deg, #f0f7ff 0%, #e8f4fd 100%); box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
 
-<b>¿Cómo funciona?</b><br>
-Seleccione el <b>modo de ingreso de información</b> según cómo desee organizar los datos de su cultivo:
-<ul>
-<li><b>Modo anual:</b> Para cultivos con producción regular cada año (por ejemplo, frutales con cosecha anual). Ingrese los insumos y actividades para cada <b>ciclo</b> productivo. <b>Un ciclo</b> corresponde normalmente a un año agrícola o una cosecha, pero puede adaptarse según la realidad de su sistema.</li>
-<li><b>Modo perenne:</b> Para cultivos con etapas diferenciadas (implantación, crecimiento sin producción, producción). Ingrese los datos por etapa y analice los resultados por etapa y fuente de emisión.</li>
+<div style="text-align: center; margin-bottom: 1.5em;">
+<span style="font-size: 2em;">🌱</span>
+<h2 style="color: #1976d2; margin: 0.5em 0; font-size: 1.8em;">¡Bienvenido a AgroPrint!</h2>
+<p style="font-size: 1.2em; color: #555; margin: 0;">Calculadora de huella de carbono para agricultores</p>
+</div>
+
+<div style="background: white; border-radius: 8px; padding: 1.2em; margin: 1.5em 0; border-left: 4px solid #4CAF50;">
+<h3 style="color: #2E7D32; margin-top: 0;">🎯 ¿Por qué medir tu huella de carbono?</h3>
+<p style="margin-bottom: 0;">Cada vez más compradores y mercados internacionales valoran la <strong>agricultura sostenible</strong>. Conocer y reducir tu huella de carbono te ayuda a:</p>
+<ul style="margin: 0.5em 0;">
+<li>📈 <strong>Acceder a mejores precios</strong> y mercados premium</li>
+<li>🏆 <strong>Obtener certificaciones</strong> de sostenibilidad</li>
+<li>💰 <strong>Reducir costos</strong> optimizando el uso de insumos</li>
+<li>🌍 <strong>Contribuir</strong> al cuidado del medio ambiente</li>
 </ul>
-<b>Nota:</b> La elección del modo no depende exclusivamente del tipo biológico del cultivo, sino de cómo desea organizar la información. Por ejemplo, un cultivo perenne puede ser ingresado en modo anual si desea analizar cada cosecha por separado.<br><br>
-<b>Ejemplo:</b> Un huerto de manzanos puede ser ingresado en modo anual (cosecha por año) o modo perenne (implantación, crecimiento, producción).<br><br>
-En cada etapa o ciclo, se le solicitarán datos sobre riego, uso de maquinaria, fertilizantes, agroquímicos y gestión de residuos vegetales.<br>
-Al finalizar, obtendrá un reporte detallado y visual de la huella de carbono de su sistema productivo.
+</div>
+
+<div style="background: white; border-radius: 8px; padding: 1.2em; margin: 1.5em 0;">
+<h3 style="color: #1976d2; margin-top: 0;">📊 ¿Qué hace esta herramienta?</h3>
+<p>AgroPrint calcula las emisiones de gases de efecto invernadero de tu cultivo, considerando todo el proceso desde la siembra hasta la cosecha. Analiza:</p>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 1em 0;">
+<div style="background: #E3F2FD; padding: 0.8em; border-radius: 6px;">🌾 <strong>Fertilizantes</strong></div>
+<div style="background: #E8F5E8; padding: 0.8em; border-radius: 6px;">🚜 <strong>Labores y Maquinaria</strong></div>
+<div style="background: #FFF3E0; padding: 0.8em; border-radius: 6px;">💧 <strong>Riego</strong></div>
+<div style="background: #F3E5F5; padding: 0.8em; border-radius: 6px;">🧪 <strong>Agroquímicos</strong></div>
+<div style="background: #E0F2F1; padding: 0.8em; border-radius: 6px;">♻️ <strong>Gestión de Residuos</strong></div>
+</div>
+</div>
+
+<div style="background: #FFF8E1; border-radius: 8px; padding: 1.2em; margin: 1.5em 0; border-left: 4px solid #FFA000;">
+<h3 style="color: #F57C00; margin-top: 0;">📋 ¿Qué información necesitas tener lista?</h3>
+<p><strong>Antes de comenzar, reúne esta información de tu última temporada:</strong></p>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin: 1em 0;">
+<div>
+<strong>🌾 Fertilizantes:</strong><br>
+• Tipos y cantidades de fertilizantes (orgánicos e inorgánicos) utilizados<br>
+• Contenido nutricional si lo conoces
+</div>
+<div>
+<strong>🚜 Labores y Maquinaria:</strong><br>
+• Qué labores realizas (siembra, cosecha, poda, etc.)<br>
+• Consumo de combustible para labores mecanizadas
+</div>
+<div>
+<strong>💧 Riego:</strong><br>
+• Tipo de sistema de riego<br>
+• Consumo de agua y energía para bombeo
+</div>
+<div>
+<strong>🧪 Agroquímicos:</strong><br>
+• Cantidades de pesticidas, fungicidas, herbicidas e insecticidas aplicados<br>
+• Tipos de productos utilizados
+</div>
+<div>
+<strong>♻️ Gestión de Residuos:</strong><br>
+• Manejo de residuos vegetales<br>
+• Métodos: quema, compostaje, incorporación al suelo
+</div>
+</div>
+</div>
+
+<div style="background: white; border-radius: 8px; padding: 1.2em; margin: 1.5em 0;">
+<h3 style="color: #1976d2; margin-top: 0;">📊 Tipos de Análisis Disponibles</h3>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; margin: 1em 0;">
+<div style="border: 2px solid #4CAF50; border-radius: 8px; padding: 1em; background: #f8fff8;">
+<h4 style="color: #2E7D32; margin-top: 0;">🍎 Análisis Anual</h4>
+<p style="margin: 0.5em 0;"><strong>Ideal para:</strong></p>
+<ul style="margin: 0.5em 0; padding-left: 1.2em;">
+<li>Cultivos anuales (maíz, hortalizas, cereales)</li>
+<li>Análisis de un año específico de frutales establecidos</li>
+<li>Evaluación rápida de una temporada</li>
+</ul>
+<p style="margin: 0.5em 0;"><strong>Analiza:</strong> Un ciclo productivo o año específico</p>
+<p style="margin: 0.5em 0; color: #2E7D32;"><strong>⏱️ Tiempo:</strong> Más rápido (15-20 min)</p>
+</div>
+<div style="border: 2px solid #FF9800; border-radius: 8px; padding: 1em; background: #fffbf0;">
+<h4 style="color: #F57C00; margin-top: 0;">🌳 Análisis de Ciclo de Vida Completo</h4>
+<p style="margin: 0.5em 0;"><strong>Ideal para:</strong></p>
+<ul style="margin: 0.5em 0; padding-left: 1.2em;">
+<li>Cultivos perennes (frutales, viñedos)</li>
+<li>Incluir inversión de establecimiento</li>
+<li>Análisis completo desde plantación</li>
+</ul>
+<p style="margin: 0.5em 0;"><strong>Analiza:</strong> Implantación + crecimiento + producción</p>
+<p style="margin: 0.5em 0; color: #F57C00;"><strong>⏱️ Tiempo:</strong> Más completo (25-35 min)</p>
+</div>
+</div>
+<p style="text-align: center; color: #666; font-style: italic; margin: 1em 0;">
+💡 Si tienes dudas, el Análisis Anual es más simple y cubre la mayoría de necesidades
+</p>
+</div>
+
+<div style="background: white; border-radius: 8px; padding: 1.2em; margin: 1.5em 0;">
+<h3 style="color: #1976d2; margin-top: 0;">🛤️ ¿Cómo funciona?</h3>
+<div style="display: flex; align-items: center; justify-content: space-around; flex-wrap: wrap; margin: 1em 0;">
+<div style="text-align: center; margin: 0.5em;">
+<div style="background: #1976d2; color: white; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; margin: 0 auto 0.5em; font-weight: bold;">1</div>
+<small>Selecciona tipo<br>de análisis</small>
+</div>
+<div style="font-size: 1.5em; color: #1976d2;">→</div>
+<div style="text-align: center; margin: 0.5em;">
+<div style="background: #1976d2; color: white; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; margin: 0 auto 0.5em; font-weight: bold;">2</div>
+<small>Ingresa tus<br>datos</small>
+</div>
+<div style="font-size: 1.5em; color: #1976d2;">→</div>
+<div style="text-align: center; margin: 0.5em;">
+<div style="background: #1976d2; color: white; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; margin: 0 auto 0.5em; font-weight: bold;">3</div>
+<small>Obtén tu<br>reporte</small>
+</div>
+</div>
+</div>
+
+<div style="background: #E8F5E8; border-radius: 8px; padding: 1.2em; margin: 1.5em 0; border-left: 4px solid #4CAF50;">
+<h3 style="color: #2E7D32; margin-top: 0;">🎁 ¿Qué obtienes al final?</h3>
+<ul style="margin: 0.5em 0;">
+<li>📊 <strong>Reporte completo</strong> de tu huella de carbono</li>
+<li>📈 <strong>Gráficos visuales</strong> fáciles de entender</li>
+<li>📄 <strong>Documentos PDF y Excel</strong> para presentar a compradores</li>
+<li>💡 <strong>Identificación</strong> de las principales fuentes de emisiones</li>
+<li>🎯 <strong>Oportunidades</strong> para reducir costos e impacto ambiental</li>
+</ul>
+</div>
+
+<div style="text-align: center; margin-top: 2em; padding: 1em; background: #f8f9fa; border-radius: 8px;">
+<p style="margin: 0; color: #666; font-size: 0.9em;">
+<strong>Metodología científica:</strong> Basado en estándares internacionales IPCC 2006 y PAS 2050<br>
+<strong>Tiempo estimado:</strong> 15-30 minutos (dependiendo del tipo de cultivo)
+</p>
+</div>
+
 </div>
 """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+# Mostrar la bienvenida
+mostrar_bienvenida()
 
 # -----------------------------
 # Inicialización de estructuras para guardar resultados
