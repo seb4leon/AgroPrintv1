@@ -1,8 +1,6 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import plotly.express as px
-import plotly.graph_objects as go
 
 # --- Factores de emisión y parámetros configurables (modificar aquí) ---
 
@@ -22,12 +20,6 @@ EF1 = 0.01   # Emisión directa de N2O-N por aplicación de N
 EF4 = 0.01   # Emisión indirecta de N2O-N por volatilización
 EF5 = 0.011 # Emisión indirecta de N2O-N por lixiviación/escurrimiento
 
-# --- Factor IPCC 2006 para emisiones de CO2 por hidrólisis de urea ---
-# Unidades: kg CO2 / kg urea
-# Fuente: IPCC 2006 Vol.4 Cap.11 Eq. 11.13
-# Procedimiento: FE = 0.20 (contenido C en urea) × 44/12 (conversión CO2-C a CO2)
-EF_CO2_UREA = 0.20 * (44/12)  # = 0.733 kg CO2 / kg urea
-
 # --- Fracciones por defecto (modificables) ---
 # Unidades: adimensional
 # Fuente: IPCC 2006 Vol.4 Cap.11 Tabla 11.1. Refinement 2019
@@ -41,8 +33,8 @@ FRAC_LIXIVIACION = 0.24            # Fracción de N lixiviado (aplica a todo N s
 # Fuente: IPCC 2006 Vol.4 Cap.2 Tablas 2.5 y 2.6
 EF_CH4_QUEMA = 2.7 / 1000   # kg CH4 / kg MS
 EF_N2O_QUEMA = 0.07 / 1000  # kg N2O / kg MS
-FRACCION_SECA_QUEMA = 0.8   # adimensional, típico IPCC. ESTE VALOR NO ESTOY 100% SEGURO
-FRACCION_QUEMADA = 0.85      # adimensional, típico IPCC
+FRACCION_SECA_QUEMA = 0.8   # adimensional, típico IPCC
+FRACCION_QUEMADA = 0.9      # adimensional, típico IPCC
 
 # --- Factores sugeridos para fertilizantes orgánicos (estructura eficiente y compacta) ---
 # Unidades: fraccion_seca (adimensional), N/P2O5/K2O (% peso fresco)
@@ -258,15 +250,6 @@ factores_fertilizantes = {
     "Ácido bórico": [
         {"origen": "Promedio", "N_porcentaje": 0.00, "Frac_volatilizacion": 0.11, "Frac_lixiviacion": 0.24, "FE_produccion_producto": 5.52, "Fuente": "https://www.researchgate.net/publication/351106329_Life_cycle_assessment_on_boron_production_is_boric_acid_extraction_from_salt-lake_brine_environmentally_friendly"}
     ],
-    "Ácido fosfórico": [
-        {"origen": "Promedio", "N_porcentaje": 0.00, "Frac_volatilizacion": 0.11, "Frac_lixiviacion": 0.24, "FE_produccion_producto": 5.52, "Fuente": "https://apps.carboncloud.com/climatehub/product-reports/id/216857142454"}
-    ],
-    "Cloruro de potasio": [
-        {"origen": "Promedio", "N_porcentaje": 0.00, "Frac_volatilizacion": 0.11, "Frac_lixiviacion": 0.24, "FE_produccion_producto": 0.22, "Fuente": "https://apps.carboncloud.com/climatehub/product-reports/id/216857142454"}
-    ],
-    "Hidróxido de potasio": [
-        {"origen": "Promedio", "N_porcentaje": 0.00, "Frac_volatilizacion": 0.11, "Frac_lixiviacion": 0.24, "FE_produccion_producto": 1.48, "Fuente": "https://apps.carboncloud.com/climatehub/product-reports/id/216857142454"}
-    ],
     "NPK": [
         {"origen": "Europa", "N_porcentaje": 0.15, "Frac_volatilizacion": 0.11, "Frac_lixiviacion": 0.24, "FE_produccion_producto": 0.730, "Fuente": "https://www.researchgate.net/profile/Frank-Brentrup-2/publication/312553933_Carbon_footprint_analysis_of_mineral_fertilizer_production_in_Europe_and_other_world_regions/links/5881ec8d4585150dde4012fe/Carbon-footprint-analysis-of-mineral-fertilizer-production-in-Europe-and-other-world-regions.pdf"},
         {"origen": "Rusia", "N_porcentaje": 0.15, "Frac_volatilizacion": 0.11, "Frac_lixiviacion": 0.24, "FE_produccion_producto": 1.400, "Fuente": "https://www.researchgate.net/profile/Frank-Brentrup-2/publication/312553933_Carbon_footprint_analysis_of_mineral_fertilizer_production_in_Europe_and_other_world_regions/links/5881ec8d4585150dde4012fe/Carbon-footprint-analysis-of-mineral-fertilizer-production-in-Europe-and-other-world-regions.pdf"},
@@ -343,18 +326,17 @@ factores_emision = {
     'transporte': valores_defecto["fe_transporte"]     # kg CO2e / km recorrido (valor genérico, puede variar según tipo de transporte)
 }
 
-# --- Factores de emisión para gestión de residuos vegetales (IPCC 2006 Vol.5, Cap.3, Tabla 3.4) ---
-# Compostaje aeróbico de residuos vegetales - factores de emisión IPCC
+# --- Factores de emisión para gestión de residuos vegetales (IPCC 2006 Vol.4, Cap.4, Tablas 4.1 y 4.2) ---
 factores_residuos = {
     "fraccion_seca": 0.8,  # Fracción seca de biomasa (adimensional, típico 0.8, IPCC)
     "compostaje": {
-        "base_seca": {
-            "EF_CH4": 0.010,    # kg CH4 / kg materia seca compostada (IPCC 2006 Vol.5 Cap.3 Tabla 3.4)
-            "EF_N2O": 0.0006    # kg N2O / kg materia seca compostada (IPCC 2006 Vol.5 Cap.3 Tabla 3.4)
+        "aerobico": {
+            "EF_CH4": 0.004,    # kg CH4 / kg materia seca compostada (IPCC 2006 Vol.4 Cap.4 Tabla 4.1)
+            "EF_N2O": 0.0003    # kg N2O / kg materia seca compostada (IPCC 2006 Vol.4 Cap.4 Tabla 4.1)
         },
-        "base_humeda": {
-            "EF_CH4": 0.004,    # kg CH4 / kg materia húmeda compostada (IPCC 2006 Vol.5 Cap.3 Tabla 3.4)
-            "EF_N2O": 0.0003    # kg N2O / kg materia húmeda compostada (IPCC 2006 Vol.5 Cap.3 Tabla 3.4)
+        "anaerobico": {
+            "EF_CH4": 0.01,     # kg CH4 / kg materia seca compostada (IPCC 2006 Vol.4 Cap.4 Tabla 4.1)
+            "EF_N2O": 0.0006    # kg N2O / kg materia seca compostada (IPCC 2006 Vol.4 Cap.4 Tabla 4.1)
         }
     },
     "incorporacion": {
@@ -411,151 +393,37 @@ def get_unique_key():
 
 # --- DATOS DE ENTRADA ---
 st.set_page_config(layout="wide")
+st.title("AgroPrint Calculadora de huella de carbono para productos frutícolas")
 
-def mostrar_bienvenida():
-    """Página de bienvenida con información general"""
-    st.title("AgroPrint - Calculadora de huella de carbono para productos frutícolas")
-    
-    st.markdown("""
-<div style="border: 2px solid #1976d2; border-radius: 12px; padding: 1.5em; background: linear-gradient(135deg, #f0f7ff 0%, #e8f4fd 100%); box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+st.markdown("""
+<div style="border: 2px solid #1976d2; border-radius: 8px; padding: 1.2em; background-color: #f0f7ff;">
+<span style="font-size:1.3em; font-weight:bold; text-decoration:underline;">
+Bienvenido/a a AgroPrint, la calculadora de huella de carbono para productos frutícolas
+</span>
+<br><br>
+Esta herramienta permite estimar la huella de carbono de sistemas productivos frutícolas bajo el enfoque "cradle-to-farm gate" (de la cuna a la puerta de la granja), siguiendo metodologías reconocidas como PAS 2050 y los lineamientos del IPCC 2006 (y actualización de 2019) para el sector AFOLU.
 
-<div style="text-align: center; margin-bottom: 1.5em;">
-<span style="font-size: 2em;">🌱</span>
-<h2 style="color: #1976d2; margin: 0.5em 0; font-size: 1.8em;">¡Bienvenido a AgroPrint!</h2>
-<p style="font-size: 1.2em; color: #555; margin: 0;">Calculadora de huella de carbono para agricultores</p>
-</div>
+Seleccione si su cultivo es <b>anual</b> o <b>perenne</b>. Según su elección, la calculadora le guiará a través de distintas etapas y pestañas:
 
-<div style="background: white; border-radius: 8px; padding: 1.2em; margin: 1.5em 0; border-left: 4px solid #4CAF50;">
-<h3 style="color: #2E7D32; margin-top: 0;">🎯 ¿Por qué medir tu huella de carbono?</h3>
-<p style="margin-bottom: 0;">Cada vez más compradores y mercados internacionales valoran la <strong>agricultura sostenible</strong>. Conocer y reducir tu huella de carbono te ayuda a:</p>
-<ul style="margin: 0.5em 0;">
-<li>📈 <strong>Acceder a mejores precios</strong> y mercados premium</li>
-<li>🏆 <strong>Obtener certificaciones</strong> de sostenibilidad</li>
-<li>💰 <strong>Reducir costos</strong> optimizando el uso de insumos</li>
-<li>🌍 <strong>Contribuir</strong> al cuidado del medio ambiente</li>
+<ul>
+<li><b>Cultivo anual:</b>
+  <ul>
+    <li>Ingrese la información de insumos y actividades para cada ciclo productivo del año agrícola.</li>
+    <li>Visualice los resultados globales y desglosados por ciclo y fuente de emisión en la pestaña "Resultados".</li>
+  </ul>
+</li>
+<li><b>Cultivo perenne:</b>
+  <ul>
+    <li>Complete la información para cada etapa: "Implantación", "Crecimiento sin producción" y "Producción".</li>
+    <li>En la pestaña "Resultados" podrá analizar los resultados globales, por etapa y por fuente de emisión.</li>
+  </ul>
+</li>
 </ul>
-</div>
 
-<div style="background: white; border-radius: 8px; padding: 1.2em; margin: 1.5em 0;">
-<h3 style="color: #1976d2; margin-top: 0;">📊 ¿Qué hace esta herramienta?</h3>
-<p>AgroPrint calcula las emisiones de gases de efecto invernadero de tu cultivo, considerando todo el proceso desde la siembra hasta la cosecha. Analiza:</p>
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 1em 0;">
-<div style="background: #E3F2FD; padding: 0.8em; border-radius: 6px;">🌾 <strong>Fertilizantes</strong></div>
-<div style="background: #E8F5E8; padding: 0.8em; border-radius: 6px;">🚜 <strong>Labores y Maquinaria</strong></div>
-<div style="background: #FFF3E0; padding: 0.8em; border-radius: 6px;">💧 <strong>Riego</strong></div>
-<div style="background: #F3E5F5; padding: 0.8em; border-radius: 6px;">🧪 <strong>Agroquímicos</strong></div>
-<div style="background: #E0F2F1; padding: 0.8em; border-radius: 6px;">♻️ <strong>Gestión de Residuos</strong></div>
-</div>
-</div>
-
-<div style="background: #FFF8E1; border-radius: 8px; padding: 1.2em; margin: 1.5em 0; border-left: 4px solid #FFA000;">
-<h3 style="color: #F57C00; margin-top: 0;">📋 ¿Qué información necesitas tener lista?</h3>
-<p><strong>Antes de comenzar, reúne esta información de tu última temporada:</strong></p>
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin: 1em 0;">
-<div>
-<strong>🌾 Fertilizantes:</strong><br>
-• Tipos y cantidades de fertilizantes (orgánicos e inorgánicos) utilizados<br>
-• Contenido nutricional si lo conoces
-</div>
-<div>
-<strong>🚜 Labores y Maquinaria:</strong><br>
-• Qué labores realizas (siembra, cosecha, poda, etc.)<br>
-• Consumo de combustible para labores mecanizadas
-</div>
-<div>
-<strong>💧 Riego:</strong><br>
-• Tipo de sistema de riego<br>
-• Consumo de agua y energía para bombeo
-</div>
-<div>
-<strong>🧪 Agroquímicos:</strong><br>
-• Cantidades de pesticidas, fungicidas, herbicidas e insecticidas aplicados<br>
-• Tipos de productos utilizados
-</div>
-<div>
-<strong>♻️ Gestión de Residuos:</strong><br>
-• Manejo de residuos vegetales<br>
-• Métodos: quema, compostaje, incorporación al suelo
-</div>
-</div>
-</div>
-
-<div style="background: white; border-radius: 8px; padding: 1.2em; margin: 1.5em 0;">
-<h3 style="color: #1976d2; margin-top: 0;">📊 Tipos de Análisis Disponibles</h3>
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; margin: 1em 0;">
-<div style="border: 2px solid #4CAF50; border-radius: 8px; padding: 1em; background: #f8fff8;">
-<h4 style="color: #2E7D32; margin-top: 0;">🍎 Análisis Anual</h4>
-<p style="margin: 0.5em 0;"><strong>Ideal para:</strong></p>
-<ul style="margin: 0.5em 0; padding-left: 1.2em;">
-<li>Cultivos anuales (maíz, hortalizas, cereales)</li>
-<li>Análisis de un año específico de frutales establecidos</li>
-<li>Evaluación rápida de una temporada</li>
-</ul>
-<p style="margin: 0.5em 0;"><strong>Analiza:</strong> Un ciclo productivo o año específico</p>
-<p style="margin: 0.5em 0; color: #2E7D32;"><strong>⏱️ Tiempo:</strong> Más rápido (15-20 min)</p>
-</div>
-<div style="border: 2px solid #FF9800; border-radius: 8px; padding: 1em; background: #fffbf0;">
-<h4 style="color: #F57C00; margin-top: 0;">🌳 Análisis de Ciclo de Vida Completo</h4>
-<p style="margin: 0.5em 0;"><strong>Ideal para:</strong></p>
-<ul style="margin: 0.5em 0; padding-left: 1.2em;">
-<li>Cultivos perennes (frutales, viñedos)</li>
-<li>Incluir inversión de establecimiento</li>
-<li>Análisis completo desde plantación</li>
-</ul>
-<p style="margin: 0.5em 0;"><strong>Analiza:</strong> Implantación + crecimiento + producción</p>
-<p style="margin: 0.5em 0; color: #F57C00;"><strong>⏱️ Tiempo:</strong> Más completo (25-35 min)</p>
-</div>
-</div>
-<p style="text-align: center; color: #666; font-style: italic; margin: 1em 0;">
-💡 Si tienes dudas, el Análisis Anual es más simple y cubre la mayoría de necesidades
-</p>
-</div>
-
-<div style="background: white; border-radius: 8px; padding: 1.2em; margin: 1.5em 0;">
-<h3 style="color: #1976d2; margin-top: 0;">🛤️ ¿Cómo funciona?</h3>
-<div style="display: flex; align-items: center; justify-content: space-around; flex-wrap: wrap; margin: 1em 0;">
-<div style="text-align: center; margin: 0.5em;">
-<div style="background: #1976d2; color: white; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; margin: 0 auto 0.5em; font-weight: bold;">1</div>
-<small>Selecciona tipo<br>de análisis</small>
-</div>
-<div style="font-size: 1.5em; color: #1976d2;">→</div>
-<div style="text-align: center; margin: 0.5em;">
-<div style="background: #1976d2; color: white; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; margin: 0 auto 0.5em; font-weight: bold;">2</div>
-<small>Ingresa tus<br>datos</small>
-</div>
-<div style="font-size: 1.5em; color: #1976d2;">→</div>
-<div style="text-align: center; margin: 0.5em;">
-<div style="background: #1976d2; color: white; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; margin: 0 auto 0.5em; font-weight: bold;">3</div>
-<small>Obtén tu<br>reporte</small>
-</div>
-</div>
-</div>
-
-<div style="background: #E8F5E8; border-radius: 8px; padding: 1.2em; margin: 1.5em 0; border-left: 4px solid #4CAF50;">
-<h3 style="color: #2E7D32; margin-top: 0;">🎁 ¿Qué obtienes al final?</h3>
-<ul style="margin: 0.5em 0;">
-<li>📊 <strong>Reporte completo</strong> de tu huella de carbono</li>
-<li>📈 <strong>Gráficos visuales</strong> fáciles de entender</li>
-<li>📄 <strong>Documentos PDF y Excel</strong> para presentar a compradores</li>
-<li>💡 <strong>Identificación</strong> de las principales fuentes de emisiones</li>
-<li>🎯 <strong>Oportunidades</strong> para reducir costos e impacto ambiental</li>
-</ul>
-</div>
-
-<div style="text-align: center; margin-top: 2em; padding: 1em; background: #f8f9fa; border-radius: 8px;">
-<p style="margin: 0; color: #666; font-size: 0.9em;">
-<strong>Metodología científica:</strong> Basado en estándares internacionales IPCC 2006 y PAS 2050<br>
-<strong>Tiempo estimado:</strong> 15-30 minutos (dependiendo del tipo de cultivo)
-</p>
-</div>
-
+En cada etapa o ciclo, se le solicitarán datos sobre riego, uso de maquinaria, fertilizantes, agroquímicos, gestión de residuos, materiales y transporte (opcional).<br>
+Al finalizar, obtendrá un reporte detallado y visual de la huella de carbono de su sistema productivo.
 </div>
 """, unsafe_allow_html=True)
-
-    st.markdown("---")
-
-# Mostrar la bienvenida
-mostrar_bienvenida()
 
 # -----------------------------
 # Inicialización de estructuras para guardar resultados
@@ -629,7 +497,7 @@ def ingresar_fertilizantes(etapa, unidad_cantidad="ciclo"):
     sufijo = "ciclo" if unidad_cantidad == "ciclo" else "año"
 
     n_fert = st.number_input(
-        f"Ingrese la cantidad de fertilizantes que utiliza (orgánicos e inorgánicos)",
+        f"¿Cuántos fertilizantes desea agregar? (orgánicos o inorgánicos)",
         min_value=0, step=1, format="%.6g", key=f"num_fert_total_{etapa}"
     )
     fertilizantes = []
@@ -637,7 +505,7 @@ def ingresar_fertilizantes(etapa, unidad_cantidad="ciclo"):
     for i in range(int(n_fert)):
         with st.expander(f"Fertilizante #{i+1}"):
             modo = st.radio(
-                "¿Qué tipo de fertilizante desea ingresar?",
+                "¿Cómo desea ingresar este fertilizante?",
                 ["Inorgánico (sintético)", "Orgánico (estiércol, compost, guano, etc.)"],
                 key=f"modo_fert_{etapa}_{i}"
             )
@@ -732,7 +600,7 @@ def ingresar_fertilizantes(etapa, unidad_cantidad="ciclo"):
                     f"N = {valores['N']}%, "
                     f"P₂O₅ = {valores['P2O5']}%, "
                     f"K₂O = {valores['K2O']}%, "
-                    f"Fracción seca = {format_fraction_as_percent(valores['fraccion_seca'], decimales=1)}"
+                    f"Fracción seca = {valores['fraccion_seca']*100:.1f}%"
                 )
                 cantidad = st.number_input(f"Cantidad aplicada (kg/ha·{sufijo}, base húmeda)", min_value=0.0, format="%.6g", key=f"cant_org_{etapa}_{i}")
                 n = st.number_input("Contenido de N (%)", min_value=0.0, max_value=100.0, value=float(valores['N']), format="%.6g", key=f"N_org_{etapa}_{i}")
@@ -830,7 +698,6 @@ def calcular_emisiones_fertilizantes(fert_data, duracion):
     fertilizantes = fert_data.get("fertilizantes", [])
 
     emision_produccion = 0
-    emision_co2_urea = 0  # Nueva variable para emisiones CO2 por hidrólisis de urea
     n_aplicado_inorg = 0
     n_aplicado_org = 0
     volatilizacion_inorg = 0
@@ -842,7 +709,6 @@ def calcular_emisiones_fertilizantes(fert_data, duracion):
 
     for fert in fertilizantes:
         em_prod = 0
-        em_co2_urea_individual = 0  # CO2 de urea para este fertilizante específico
         em_n2o_dir = 0
         em_n2o_ind = 0
         em_n2o_ind_vol = 0
@@ -915,12 +781,6 @@ def calcular_emisiones_fertilizantes(fert_data, duracion):
                 frac_lix = variante.get("Frac_lixiviacion", FRAC_LIXIVIACION)
                 volatilizacion_inorg += n_aplicado * frac_vol
                 lixiviacion_inorg += n_aplicado * frac_lix
-                
-                # --- CÁLCULO DE EMISIONES CO2 POR HIDRÓLISIS DE UREA (IPCC 2006 Vol.4 Cap.2) ---
-                if tipo == "Urea" or "Urea" in tipo:
-                    em_co2_urea_individual = cantidad * EF_CO2_UREA * duracion
-                    emision_co2_urea += em_co2_urea_individual
-                
                 # FE personalizado
                 fe = fert.get("fe_personalizado", None)
                 if fe is not None and fe > 0:
@@ -957,12 +817,11 @@ def calcular_emisiones_fertilizantes(fert_data, duracion):
             "origen": fert.get("origen", ""),
             "cantidad": fert.get("cantidad", 0),
             "emision_produccion": em_prod,
-            "emision_co2_urea": em_co2_urea_individual,  # Nueva columna en desglose
             "emision_n2o_directa": em_n2o_dir,
             "emision_n2o_indirecta": em_n2o_ind,
             "emision_n2o_ind_volatilizacion": em_n2o_ind_vol,
             "emision_n2o_ind_lixiviacion": em_n2o_ind_lix,
-            "total": em_prod + em_co2_urea_individual + em_n2o_dir + em_n2o_ind  # Incluye CO2 urea en total
+            "total": em_prod + em_n2o_dir + em_n2o_ind
         })
 
         emision_produccion += em_prod
@@ -991,7 +850,7 @@ def calcular_emisiones_fertilizantes(fert_data, duracion):
     n2o_indirecto_co2e = n2o_indirecto * GWP["N2O"]
     emision_n2o_co2e_total = n2o_directo_co2e + n2o_indirecto_co2e
 
-    return emision_produccion, emision_co2_urea, n2o_directo_co2e, n2o_indirecto_co2e, desglose
+    return emision_produccion, n2o_directo_co2e, n2o_indirecto_co2e, desglose
 
 def ingresar_agroquimicos(etapa):
     st.markdown("##### Agroquímicos y pesticidas")
@@ -1015,7 +874,7 @@ def ingresar_agroquimicos(etapa):
         "herbicidas": list(factores_emision["herbicidas"].keys())
     }
     n_agro = st.number_input(
-        "Ingrese la cantidad de agroquímicos y/o pesticidas diferentes que utiliza",
+        "¿Cuántos agroquímicos y/o pesticidas diferentes desea agregar en el ciclo?",
         min_value=0, step=1, format="%.10g", key=f"num_agroquimicos_{etapa}"
     )
     for i in range(n_agro):
@@ -1360,15 +1219,17 @@ def ingresar_gestion_residuos(etapa):
         st.subheader("Gestión de residuos vegetales")
     st.markdown("""
     <div style="background-color:#e3f2fd; padding:0.7em; border-radius:6px;">
-    <b>¿Qué son los residuos vegetales del huerto?</b><br>
-    Son todos los restos de plantas generados en su predio durante el cultivo y cosecha:<br>
-    • Ramas y hojas de poda • Frutos descartados o dañados • Restos de cosecha<br>
-    • Raíces y tallos • Material vegetal no comercializable<br><br>
-    <b>¿Cómo puede gestionarlos?</b><br>
-    • <b>Quema:</b> Genera emisiones directas de CH₄ y N₂O por combustión.<br>
-    • <b>Compostaje en el predio:</b> Proceso de descomposición controlada que genera emisiones según metodología IPCC.<br>
-    • <b>Incorporación al suelo:</b> Enterrar o mezclar con tierra (no genera emisiones netas).<br>
-    • <b>Retiro del campo:</b> Sacar del predio para gestión externa (sin emisiones en su huerto).<br>
+    <b>¿Qué es la gestión de residuos vegetales?</b><br>
+    Se refiere al manejo de los restos vegetales generados en el campo (ramas, hojas, raíces, frutos no cosechados, etc.) después de la cosecha o durante el manejo del cultivo.<br>
+    <ul>
+    <li><b>Quema:</b> genera emisiones directas de CH₄ y N₂O (se aplica fracción seca y fracción quemada, IPCC 2006).<br>
+    <i>Valores recomendados IPCC: fracción seca = 0,8; fracción quemada = 0,9; EF_CH4 = 2,7 g/kg MS; EF_N2O = 0,07 g/kg MS.</i></li>
+    <li><b>Compostaje:</b> genera emisiones de CH₄ y N₂O (se aplica fracción seca, IPCC 2006).<br>
+    <i>Puede ser aeróbico o anaeróbico. Valores recomendados IPCC: aeróbico (CH₄: 0,004 kg/kg MS, N₂O: 0,0003 kg/kg MS), anaeróbico (CH₄: 0,01 kg/kg MS, N₂O: 0,0006 kg/kg MS).</i></li>
+    <li><b>Incorporación al suelo:</b> no genera emisiones directas (el carbono se recicla en el suelo, IPCC 2006). Puede haber secuestro de carbono en modo avanzado (no implementado).</li>
+    <li><b>Retiro del campo:</b> no genera emisiones directas en el predio (la gestión ocurre fuera del límite del sistema).</li>
+    </ul>
+    <i>La fracción seca (típicamente 0,8) sólo se aplica a quema y compostaje, ya que las emisiones se calculan sobre materia seca.</i>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1381,11 +1242,10 @@ def ingresar_gestion_residuos(etapa):
 
     if activar == "Sí":
         biomasa = st.number_input(
-            "¿Cuántos kilogramos de residuos vegetales genera en total en este ciclo? (kg/hectárea, peso tal como salen del huerto)",
+            "Cantidad total de residuos vegetales generados en este ciclo (kg/ha·ciclo, húmeda)",
             min_value=0.0,
             format="%.10g",
-            key=f"biomasa_total_{etapa}",
-            help="Incluya todos los residuos: ramas de poda, hojas, frutos descartados, etc. Ingrese el peso tal como los recolecta, sin secar."
+            key=f"biomasa_total_{etapa}"
         )
         modo = st.radio(
             "¿Cómo desea ingresar la gestión de residuos?",
@@ -1433,7 +1293,7 @@ def ingresar_gestion_residuos(etapa):
                         key=f"fraccion_seca_quema_{etapa}"
                     )
                     fraccion_quemada = st.number_input(
-                        "Fracción de biomasa efectivamente quemada (valor recomendado IPCC: 0,85)",
+                        "Fracción de biomasa efectivamente quemada (valor recomendado IPCC: 0,9)",
                         min_value=0.0, max_value=1.0, value=FRACCION_QUEMADA,
                         format="%.10g",
                         key=f"fraccion_quemada_{etapa}"
@@ -1444,33 +1304,24 @@ def ingresar_gestion_residuos(etapa):
                     }
                     st.info("Si no conoce estos valores, utilice los recomendados por el IPCC.")
                 elif op == "Compostaje":
-                    st.warning("⚠️ **Importante**: Solo considere el compostaje si se realiza dentro de su predio/huerto. Si los residuos se envían fuera para compostar, seleccione 'Retiro del campo'.")
-                    
-                    st.caption("Cálculo de emisiones según metodología IPCC 2006 para compostaje aeróbico de residuos vegetales generados en el huerto.")
-                    
-                    estado_residuos = st.radio(
-                        "¿En qué estado están los residuos vegetales al momento de hacer el compost?",
-                        [
-                            "Frescos/húmedos (recién cosechados, podados o recolectados)",
-                            "Secos (han perdido humedad, estuvieron al sol varios días)"
-                        ],
-                        key=f"estado_residuos_{etapa}",
-                        help="Esta información determina qué factores de emisión IPCC aplicar. Los residuos frescos tienen más humedad, los secos han perdido agua naturalmente."
+                    st.caption("Se aplicará fracción seca según IPCC 2006 para el cálculo de emisiones.")
+                    tipo_compost = st.radio(
+                        "Tipo de compostaje",
+                        ["Aeróbico (recomendado IPCC)", "Anaeróbico"],
+                        key=f"tipo_compostaje_{etapa}"
                     )
-                    
-                    base_calculo_key = "base_humeda" if estado_residuos.startswith("Frescos") else "base_seca"
-                    ajustes_compost = {"base_calculo": base_calculo_key}
-                    
-                    if base_calculo_key == "base_seca":
-                        fraccion_seca = st.number_input(
-                            "¿Qué porcentaje de los residuos es materia seca? (típicamente 80% para residuos secos)",
-                            min_value=0.0, max_value=100.0, value=factores_residuos["fraccion_seca"]*100,
-                            format="%.1f",
-                            key=f"fraccion_seca_compost_{etapa}"
-                        ) / 100.0
-                        ajustes_compost["fraccion_seca"] = fraccion_seca
-                    
-                    ajustes[op] = ajustes_compost
+                    tipo_compost_ipcc = "aerobico" if tipo_compost.startswith("Aeróbico") else "anaerobico"
+                    fraccion_seca = st.number_input(
+                        "Fracción seca de la biomasa (valor recomendado IPCC: 0,8)",
+                        min_value=0.0, max_value=1.0, value=factores_residuos["fraccion_seca"],
+                        format="%.10g",
+                        key=f"fraccion_seca_compost_{etapa}"
+                    )
+                    ajustes[op] = {
+                        "tipo": tipo_compost_ipcc,
+                        "fraccion_seca": fraccion_seca
+                    }
+                    st.info("Si no conoce estos valores, utilice los recomendados por el IPCC.")
                 elif op == "Incorporación al suelo":
                     st.caption("No se consideran emisiones directas según IPCC 2006. (Modo avanzado para secuestro de carbono no implementado).")
                 elif op == "Retiro del campo":
@@ -1481,15 +1332,15 @@ def ingresar_gestion_residuos(etapa):
         if modo == "Porcentaje (%)":
             faltante = 100.0 - suma
             if faltante > 0:
-                st.warning(f"Falta ingresar {format_num(faltante, decimales=1)}% para completar el 100% de los residuos.")
+                st.warning(f"Falta ingresar {faltante:.1f}% para completar el 100% de los residuos.")
             elif faltante < 0:
-                st.error(f"Ha ingresado más del 100% ({format_num(-faltante, decimales=1)}% excedente).")
+                st.error(f"Ha ingresado más del 100% ({-faltante:.1f}% excedente).")
         else:
             faltante = biomasa - suma
             if faltante > 0:
-                st.warning(f"Falta ingresar {format_num(faltante, decimales=1)} kg para completar el total de residuos.")
+                st.warning(f"Falta ingresar {faltante:,.1f} kg para completar el total de residuos.")
             elif faltante < 0:
-                st.error(f"Ha ingresado más residuos de los existentes ({format_num(-faltante, decimales=1)} kg excedente).")
+                st.error(f"Ha ingresado más residuos de los existentes ({-faltante:,.1f} kg excedente).")
 
         # Guardar detalle para cálculo posterior (NO mostrar tabla aquí)
         for op in opciones:
@@ -1531,7 +1382,7 @@ def calcular_emisiones_residuos(detalle):
         elif via == "Compostaje":
             em_ch4, em_n2o = calcular_emisiones_compostaje(
                 biomasa,
-                base_calculo=ajustes.get("base_calculo", "base_humeda"),
+                tipo=ajustes.get("tipo", "aerobico"),
                 fraccion_seca=ajustes.get("fraccion_seca")
             )
             emisiones = em_ch4 + em_n2o
@@ -1569,35 +1420,15 @@ def calcular_emisiones_quema_residuos(
 
 def calcular_emisiones_compostaje(
     biomasa,
-    base_calculo="base_humeda",
+    tipo="aerobico",
     fraccion_seca=None
 ):
-    """
-    Calcula emisiones de CH4 y N2O por compostaje aeróbico según IPCC 2006 Vol.5 Cap.3 Tabla 3.4.
-    
-    Args:
-        biomasa: cantidad de biomasa compostada (kg, húmeda)
-        base_calculo: "base_seca" o "base_humeda" según factores IPCC
-        fraccion_seca: fracción seca de la biomasa (solo para base_seca)
-    
-    Returns:
-        tuple: (emision_CH4_CO2e, emision_N2O_CO2e) en kg CO2e
-    """
     if fraccion_seca is None:
         fraccion_seca = factores_residuos["fraccion_seca"]
-    
-    ef = factores_residuos["compostaje"][base_calculo]
-    
-    if base_calculo == "base_seca":
-        # Aplicar factores a materia seca
-        ms = biomasa * fraccion_seca
-        em_ch4 = ms * ef["EF_CH4"]
-        em_n2o = ms * ef["EF_N2O"]
-    else:  # base_humeda
-        # Aplicar factores directamente a materia húmeda
-        em_ch4 = biomasa * ef["EF_CH4"]
-        em_n2o = biomasa * ef["EF_N2O"]
-    
+    ms = biomasa * fraccion_seca  # Materia seca
+    ef = factores_residuos["compostaje"][tipo]
+    em_ch4 = ms * ef["EF_CH4"]
+    em_n2o = ms * ef["EF_N2O"]
     em_ch4_co2e = em_ch4 * GWP["CH4"]
     em_n2o_co2e = em_n2o * GWP["N2O"]
     return em_ch4_co2e, em_n2o_co2e
@@ -1750,9 +1581,9 @@ def ingresar_riego_ciclo(etapa):
     # Mostrar resultados globales de riego y energía
     st.info(
         f"**Riego y energía del ciclo:**\n"
-        f"- Emisiones por agua de riego: {format_num(em_agua_total)} kg CO₂e/ha·ciclo\n"
-        f"- Emisiones por energía: {format_num(em_energia_total)} kg CO₂e/ha·ciclo\n"
-        f"- **Total riego y energía:** {format_num(em_agua_total + em_energia_total)} kg CO₂e/ha·ciclo"
+        f"- Emisiones por agua de riego: {em_agua_total:.2f} kg CO₂e/ha·ciclo\n"
+        f"- Emisiones por energía: {em_energia_total:.2f} kg CO₂e/ha·ciclo\n"
+        f"- **Total riego y energía:** {em_agua_total + em_energia_total:.2f} kg CO₂e/ha·ciclo"
     )
 
     st.session_state[f"energia_actividades_{etapa}"] = energia_actividades
@@ -1892,9 +1723,9 @@ def ingresar_riego_implantacion(etapa):
     # Mostrar resultados globales de riego y energía
     st.info(
         f"**Riego y energía (Implantación):**\n"
-        f"- Emisiones por agua de riego: {format_num(em_agua_total)} kg CO₂e\n"
-        f"- Emisiones por energía: {format_num(em_energia_total)} kg CO₂e\n"
-        f"- **Total riego y energía:** {format_num(em_agua_total + em_energia_total)} kg CO₂e"
+        f"- Emisiones por agua de riego: {em_agua_total:.2f} kg CO₂e\n"
+        f"- Emisiones por energía: {em_energia_total:.2f} kg CO₂e\n"
+        f"- **Total riego y energía:** {em_agua_total + em_energia_total:.2f} kg CO₂e"
     )
 
     return em_agua_total, em_energia_total, energia_actividades
@@ -2049,9 +1880,9 @@ def ingresar_riego_operacion_perenne(etapa, anios, sistema_riego_inicial):
         # Mostrar resultados del año
         st.info(
             f"**Año {anio} - Riego y energía:**\n"
-            f"- Emisiones por agua de riego: {format_num(em_agua_total)} kg CO₂e/ha\n"
-            f"- Emisiones por energía: {format_num(em_energia_total)} kg CO₂e/ha\n"
-            f"- **Total riego y energía año {anio}:** {format_num(em_agua_total + em_energia_total)} kg CO₂e/ha"
+            f"- Emisiones por agua de riego: {em_agua_total:.2f} kg CO₂e/ha\n"
+            f"- Emisiones por energía: {em_energia_total:.2f} kg CO₂e/ha\n"
+            f"- **Total riego y energía año {anio}:** {em_agua_total + em_energia_total:.2f} kg CO₂e/ha"
         )
 
         emisiones_totales_agua += em_agua_total
@@ -2067,9 +1898,9 @@ def ingresar_riego_operacion_perenne(etapa, anios, sistema_riego_inicial):
     # Mostrar resumen total de la etapa
     st.info(
         f"**Resumen total riego y energía etapa {etapa}:**\n"
-        f"- Emisiones totales por agua de riego: {format_num(emisiones_totales_agua)} kg CO₂e/ha\n"
-        f"- Emisiones totales por energía: {format_num(emisiones_totales_energia)} kg CO₂e/ha\n"
-        f"- **Total de la etapa:** {format_num(emisiones_totales_agua + emisiones_totales_energia)} kg CO₂e/ha"
+        f"- Emisiones totales por agua de riego: {emisiones_totales_agua:.2f} kg CO₂e/ha\n"
+        f"- Emisiones totales por energía: {emisiones_totales_energia:.2f} kg CO₂e/ha\n"
+        f"- **Total de la etapa:** {emisiones_totales_agua + emisiones_totales_energia:.2f} kg CO₂e/ha"
     )
 
     return emisiones_totales_agua, emisiones_totales_energia, emisiones_por_anio
@@ -2207,9 +2038,9 @@ def ingresar_riego_crecimiento(etapa, duracion, permitir_cambio_sistema=False):
     # Mostrar resultados globales de riego y energía (POR AÑO, antes de multiplicar por duración)
     st.info(
         f"**Riego y energía (por año):**\n"
-        f"- Emisiones por agua de riego: {format_num(em_agua_total)} kg CO₂e/ha·año\n"
-        f"- Emisiones por energía: {format_num(em_energia_total)} kg CO₂e/ha·año\n"
-        f"- **Total riego y energía:** {format_num(em_agua_total + em_energia_total)} kg CO₂e/ha·año"
+        f"- Emisiones por agua de riego: {em_agua_total:.2f} kg CO₂e/ha·año\n"
+        f"- Emisiones por energía: {em_energia_total:.2f} kg CO₂e/ha·año\n"
+        f"- **Total riego y energía:** {em_agua_total + em_energia_total:.2f} kg CO₂e/ha·año"
     )
 
     st.session_state[f"energia_actividades_crecimiento_{etapa}"] = energia_actividades
@@ -2226,15 +2057,14 @@ def etapa_implantacion():
     st.subheader("Fertilizantes utilizados en implantación")
     st.info("Ingrese la cantidad de fertilizantes aplicados por año. El sistema multiplicará por la duración de la etapa.")
     fert = ingresar_fertilizantes("Implantacion", unidad_cantidad="año")
-    em_fert_prod, em_fert_co2_urea, em_fert_n2o_dir, em_fert_n2o_ind, desglose_fert = calcular_emisiones_fertilizantes(fert, duracion)
-    em_fert_total = em_fert_prod + em_fert_co2_urea + em_fert_n2o_dir + em_fert_n2o_ind
+    em_fert_prod, em_fert_n2o_dir, em_fert_n2o_ind, desglose_fert = calcular_emisiones_fertilizantes(fert, duracion)
+    em_fert_total = em_fert_prod + em_fert_n2o_dir + em_fert_n2o_ind
     st.info(
         f"**Fertilizantes (Implantación):**\n"
-        f"- Producción de fertilizantes: {format_num(em_fert_prod)} kg CO₂e\n"
-        f"- Emisiones CO₂ por hidrólisis de urea: {format_num(em_fert_co2_urea)} kg CO₂e\n"
-        f"- Emisiones directas N₂O: {format_num(em_fert_n2o_dir)} kg CO₂e\n"
-        f"- Emisiones indirectas N₂O: {format_num(em_fert_n2o_ind)} kg CO₂e\n"
-        f"- **Total fertilizantes:** {format_num(em_fert_total)} kg CO₂e"
+        f"- Producción de fertilizantes: {em_fert_prod:.2f} kg CO₂e\n"
+        f"- Emisiones directas N₂O: {em_fert_n2o_dir:.2f} kg CO₂e\n"
+        f"- Emisiones indirectas N₂O: {em_fert_n2o_ind:.2f} kg CO₂e\n"
+        f"- **Total fertilizantes:** {em_fert_total:.2f} kg CO₂e"
     )
 
     # 2. Agroquímicos
@@ -2245,7 +2075,7 @@ def etapa_implantacion():
     em_agroq = calcular_emisiones_agroquimicos(agroq, duracion)
     st.info(
         f"**Agroquímicos (Implantación):**\n"
-        f"- **Total agroquímicos:** {format_num(em_agroq)} kg CO₂e"
+        f"- **Total agroquímicos:** {em_agroq:.2f} kg CO₂e"
     )
 
     # 3. Riego (operación y energía para riego)
@@ -2261,7 +2091,7 @@ def etapa_implantacion():
     em_maq = calcular_emisiones_maquinaria(labores, duracion)
     st.info(
         f"**Maquinaria (Implantación):**\n"
-        f"- **Total maquinaria:** {format_num(em_maq)} kg CO₂e"
+        f"- **Total maquinaria:** {em_maq:.2f} kg CO₂e"
     )
 
     # 5. Gestión de residuos vegetales
@@ -2270,7 +2100,7 @@ def etapa_implantacion():
     em_residuos, detalle_residuos = ingresar_gestion_residuos("Implantacion")
     st.info(
         f"**Gestión de residuos (Implantación):**\n"
-        f"- **Total residuos:** {format_num(em_residuos)} kg CO₂e"
+        f"- **Total residuos:** {em_residuos:.2f} kg CO₂e"
     )
 
     total = em_maq + em_agua + em_energia + em_fert_total + em_agroq + em_residuos
@@ -2304,7 +2134,7 @@ def etapa_implantacion():
         "desglose_residuos": detalle_residuos
     }
 
-    st.success(f"Emisiones totales en etapa 'Implantación': {format_num(total)} kg CO₂e/ha para {duracion} años")
+    st.success(f"Emisiones totales en etapa 'Implantación': {total:.2f} kg CO₂e/ha para {duracion} años")
     return total, 0
 
 def etapa_crecimiento(nombre_etapa, produccion_pregunta=True):
@@ -2349,15 +2179,14 @@ def etapa_crecimiento(nombre_etapa, produccion_pregunta=True):
             st.markdown("---")
             st.subheader("Fertilizantes")
             fert = ingresar_fertilizantes(f"{nombre_etapa}_anio{anio}", unidad_cantidad="año")
-            em_fert_prod, em_fert_co2_urea, em_fert_n2o_dir, em_fert_n2o_ind, desglose_fert = calcular_emisiones_fertilizantes(fert, 1)
-            em_fert_total = em_fert_prod + em_fert_co2_urea + em_fert_n2o_dir + em_fert_n2o_ind
+            em_fert_prod, em_fert_n2o_dir, em_fert_n2o_ind, desglose_fert = calcular_emisiones_fertilizantes(fert, 1)
+            em_fert_total = em_fert_prod + em_fert_n2o_dir + em_fert_n2o_ind
             st.info(
                 f"**Fertilizantes (Año {anio}):**\n"
-                f"- Producción de fertilizantes: {format_num(em_fert_prod)} kg CO₂e\n"
-                f"- Emisiones CO₂ por hidrólisis de urea: {format_num(em_fert_co2_urea)} kg CO₂e\n"
-                f"- Emisiones directas N₂O: {format_num(em_fert_n2o_dir)} kg CO₂e\n"
-                f"- Emisiones indirectas N₂O: {format_num(em_fert_n2o_ind)} kg CO₂e\n"
-                f"- **Total fertilizantes:** {format_num(em_fert_total)} kg CO₂e"
+                f"- Producción de fertilizantes: {em_fert_prod:.2f} kg CO₂e\n"
+                f"- Emisiones directas N₂O: {em_fert_n2o_dir:.2f} kg CO₂e\n"
+                f"- Emisiones indirectas N₂O: {em_fert_n2o_ind:.2f} kg CO₂e\n"
+                f"- **Total fertilizantes:** {em_fert_total:.2f} kg CO₂e"
             )
 
             st.markdown("---")
@@ -2366,7 +2195,7 @@ def etapa_crecimiento(nombre_etapa, produccion_pregunta=True):
             em_agroq = calcular_emisiones_agroquimicos(agroq, 1)
             st.info(
                 f"**Agroquímicos (Año {anio}):**\n"
-                f"- **Total agroquímicos:** {format_num(em_agroq)} kg CO₂e"
+                f"- **Total agroquímicos:** {em_agroq:.2f} kg CO₂e"
             )
 
             st.markdown("---")
@@ -2380,13 +2209,13 @@ def etapa_crecimiento(nombre_etapa, produccion_pregunta=True):
             em_maq = calcular_emisiones_maquinaria(labores, 1)
             st.info(
                 f"**Maquinaria (Año {anio}):**\n"
-                f"- **Total maquinaria:** {format_num(em_maq)} kg CO₂e"
+                f"- **Total maquinaria:** {em_maq:.2f} kg CO₂e"
             )
 
             em_residuos, detalle_residuos = ingresar_gestion_residuos(f"{nombre_etapa}_anio{anio}")
             st.info(
                 f"**Gestión de residuos (Año {anio}):**\n"
-                f"- **Total residuos:** {format_num(em_residuos)} kg CO₂e"
+                f"- **Total residuos:** {em_residuos:.2f} kg CO₂e"
             )
 
             em_anio = em_fert_total + em_agroq + em_agua + em_energia + em_maq + em_residuos
@@ -2428,7 +2257,7 @@ def etapa_crecimiento(nombre_etapa, produccion_pregunta=True):
                 "desglose_residuos": detalle_residuos
             }
 
-            st.info(f"Emisiones en año {anio}: {format_num(em_anio)} kg CO₂e/ha")
+            st.info(f"Emisiones en año {anio}: {em_anio:.2f} kg CO₂e/ha")
 
         emisiones_fuentes["Fertilizantes"] = total_fert
         emisiones_fuentes["Agroquímicos"] = total_agroq
@@ -2458,15 +2287,14 @@ def etapa_crecimiento(nombre_etapa, produccion_pregunta=True):
         st.markdown("---")
         st.subheader("Fertilizantes")
         fert = ingresar_fertilizantes(nombre_etapa, unidad_cantidad="año")
-        em_fert_prod, em_fert_co2_urea, em_fert_n2o_dir, em_fert_n2o_ind, desglose_fert = calcular_emisiones_fertilizantes(fert, duracion)
-        em_fert_total = em_fert_prod + em_fert_co2_urea + em_fert_n2o_dir + em_fert_n2o_ind
+        em_fert_prod, em_fert_n2o_dir, em_fert_n2o_ind, desglose_fert = calcular_emisiones_fertilizantes(fert, duracion)
+        em_fert_total = em_fert_prod + em_fert_n2o_dir + em_fert_n2o_ind
         st.info(
             f"**Fertilizantes (Etapa completa):**\n"
-            f"- Producción de fertilizantes: {format_num(em_fert_prod)} kg CO₂e\n"
-            f"- Emisiones CO₂ por hidrólisis de urea: {format_num(em_fert_co2_urea)} kg CO₂e\n"
-            f"- Emisiones directas N₂O: {format_num(em_fert_n2o_dir)} kg CO₂e\n"
-            f"- Emisiones indirectas N₂O: {format_num(em_fert_n2o_ind)} kg CO₂e\n"
-            f"- **Total fertilizantes:** {format_num(em_fert_total)} kg CO₂e"
+            f"- Producción de fertilizantes: {em_fert_prod:.2f} kg CO₂e\n"
+            f"- Emisiones directas N₂O: {em_fert_n2o_dir:.2f} kg CO₂e\n"
+            f"- Emisiones indirectas N₂O: {em_fert_n2o_ind:.2f} kg CO₂e\n"
+            f"- **Total fertilizantes:** {em_fert_total:.2f} kg CO₂e"
         )
 
         st.markdown("---")
@@ -2475,7 +2303,7 @@ def etapa_crecimiento(nombre_etapa, produccion_pregunta=True):
         em_agroq = calcular_emisiones_agroquimicos(agroq, duracion)
         st.info(
             f"**Agroquímicos (Etapa completa):**\n"
-            f"- **Total agroquímicos:** {format_num(em_agroq)} kg CO₂e"
+            f"- **Total agroquímicos:** {em_agroq:.2f} kg CO₂e"
         )
 
         st.markdown("---")
@@ -2489,13 +2317,13 @@ def etapa_crecimiento(nombre_etapa, produccion_pregunta=True):
         em_maq = calcular_emisiones_maquinaria(labores, duracion)
         st.info(
             f"**Maquinaria (Etapa completa):**\n"
-            f"- **Total maquinaria:** {format_num(em_maq)} kg CO₂e"
+            f"- **Total maquinaria:** {em_maq:.2f} kg CO₂e"
         )
 
         em_residuos, detalle_residuos = ingresar_gestion_residuos(nombre_etapa)
         st.info(
             f"**Gestión de residuos (Etapa completa):**\n"
-            f"- **Total residuos:** {format_num(em_residuos)} kg CO₂e"
+            f"- **Total residuos:** {em_residuos:.2f} kg CO₂e"
         )
 
         em_total = em_fert_total + em_agroq + em_agua + em_energia + em_maq + em_residuos
@@ -2525,13 +2353,13 @@ def etapa_crecimiento(nombre_etapa, produccion_pregunta=True):
             "desglose_residuos": detalle_residuos
         }
 
-        st.info(f"Emisiones totales en la etapa: {format_num(em_total)} kg CO₂e/ha para {duracion} años")
-        st.info(f"Producción total en la etapa: {format_num(produccion_total)} kg/ha")
+        st.info(f"Emisiones totales en la etapa: {em_total:.2f} kg CO₂e/ha para {duracion} años")
+        st.info(f"Producción total en la etapa: {produccion_total:.2f} kg/ha")
 
     emisiones_etapas[nombre_etapa] = em_total
     produccion_etapas[nombre_etapa] = produccion_total
 
-    st.success(f"Emisiones totales en etapa '{nombre_etapa}': {format_num(em_total)} kg CO₂e/ha para {duracion} años")
+    st.success(f"Emisiones totales en etapa '{nombre_etapa}': {em_total:.2f} kg CO₂e/ha para {duracion} años")
     return em_total, produccion_total
 
 def etapa_produccion_segmentada():
@@ -2583,17 +2411,17 @@ def etapa_produccion_segmentada():
                     st.markdown("---")
                     st.subheader("Fertilizantes")
                     fert = ingresar_fertilizantes(f"{nombre}_anio{anio}_{i}", unidad_cantidad="año")
-                    em_fert_prod, em_fert_co2_urea, em_fert_n2o_dir, em_fert_n2o_ind, desglose_fert = calcular_emisiones_fertilizantes(fert, 1)
-                    em_fert_total = em_fert_prod + em_fert_co2_urea + em_fert_n2o_dir + em_fert_n2o_ind
+                    em_fert_prod, em_fert_n2o_dir, em_fert_n2o_ind, desglose_fert = calcular_emisiones_fertilizantes(fert, 1)
+                    em_fert_total = em_fert_prod + em_fert_n2o_dir + em_fert_n2o_ind
                     # Mostrar resumen de fertilizantes
-                    st.info(f"**Fertilizantes (año {anio}):** {format_num(em_fert_total)} kg CO₂e/ha")
+                    st.info(f"**Fertilizantes (año {anio}):** {em_fert_total:.2f} kg CO₂e/ha")
 
                     st.markdown("---")
                     st.subheader("Agroquímicos y pesticidas")
                     agroq = ingresar_agroquimicos(f"{nombre}_anio{anio}_{i}")
                     em_agroq = calcular_emisiones_agroquimicos(agroq, 1)
                     # Mostrar resumen de agroquímicos
-                    st.info(f"**Agroquímicos (año {anio}):** {format_num(em_agroq)} kg CO₂e/ha")
+                    st.info(f"**Agroquímicos (año {anio}):** {em_agroq:.2f} kg CO₂e/ha")
 
                     st.markdown("---")
                     st.subheader("Riego (operación)")
@@ -2605,11 +2433,11 @@ def etapa_produccion_segmentada():
                     labores = ingresar_maquinaria_perenne(f"{nombre}_anio{anio}_{i}", nombre)
                     em_maq = calcular_emisiones_maquinaria(labores, 1)  # Solo por año
                     # Mostrar resumen de maquinaria
-                    st.info(f"**Maquinaria (año {anio}):** {format_num(em_maq)} kg CO₂e/ha")
+                    st.info(f"**Maquinaria (año {anio}):** {em_maq:.2f} kg CO₂e/ha")
 
                     em_residuos, detalle_residuos = ingresar_gestion_residuos(f"{nombre}_anio{anio}_{i}")
                     # Mostrar resumen de residuos
-                    st.info(f"**Gestión de residuos (año {anio}):** {format_num(em_residuos)} kg CO₂e/ha")
+                    st.info(f"**Gestión de residuos (año {anio}):** {em_residuos:.2f} kg CO₂e/ha")
 
                     em_anio = em_fert_total + em_agroq + em_agua + em_energia + em_maq + em_residuos
                     em_sub += em_anio
@@ -2649,17 +2477,17 @@ def etapa_produccion_segmentada():
                 st.markdown("---")
                 st.subheader("Fertilizantes")
                 fert = ingresar_fertilizantes(f"{nombre}_general_{i}", unidad_cantidad="año")
-                em_fert_prod, em_fert_co2_urea, em_fert_n2o_dir, em_fert_n2o_ind, desglose_fert = calcular_emisiones_fertilizantes(fert, dur)
-                em_fert_total = em_fert_prod + em_fert_co2_urea + em_fert_n2o_dir + em_fert_n2o_ind
+                em_fert_prod, em_fert_n2o_dir, em_fert_n2o_ind, desglose_fert = calcular_emisiones_fertilizantes(fert, dur)
+                em_fert_total = em_fert_prod + em_fert_n2o_dir + em_fert_n2o_ind
                 # Mostrar resumen de fertilizantes (por año)
-                st.info(f"**Fertilizantes (por año):** {format_num(em_fert_total/dur)} kg CO₂e/ha·año → **Total sub-etapa:** {format_num(em_fert_total)} kg CO₂e/ha")
+                st.info(f"**Fertilizantes (por año):** {em_fert_total/dur:.2f} kg CO₂e/ha·año → **Total sub-etapa:** {em_fert_total:.2f} kg CO₂e/ha")
 
                 st.markdown("---")
                 st.subheader("Agroquímicos y pesticidas")
                 agroq = ingresar_agroquimicos(f"{nombre}_general_{i}")
                 em_agroq = calcular_emisiones_agroquimicos(agroq, dur)
                 # Mostrar resumen de agroquímicos (por año)
-                st.info(f"**Agroquímicos (por año):** {format_num(em_agroq/dur)} kg CO₂e/ha·año → **Total sub-etapa:** {format_num(em_agroq)} kg CO₂e/ha")
+                st.info(f"**Agroquímicos (por año):** {em_agroq/dur:.2f} kg CO₂e/ha·año → **Total sub-etapa:** {em_agroq:.2f} kg CO₂e/ha")
 
                 st.markdown("---")
                 st.subheader("Riego (operación)")
@@ -2671,11 +2499,11 @@ def etapa_produccion_segmentada():
                 labores = ingresar_maquinaria_perenne(f"{nombre}_general_{i}", nombre)
                 em_maq = calcular_emisiones_maquinaria(labores, dur)  # Multiplica por duración
                 # Mostrar resumen de maquinaria (por año)
-                st.info(f"**Maquinaria (por año):** {format_num(em_maq/dur)} kg CO₂e/ha·año → **Total sub-etapa:** {format_num(em_maq)} kg CO₂e/ha")
+                st.info(f"**Maquinaria (por año):** {em_maq/dur:.2f} kg CO₂e/ha·año → **Total sub-etapa:** {em_maq:.2f} kg CO₂e/ha")
 
                 em_residuos, detalle_residuos = ingresar_gestion_residuos(f"{nombre}_general_{i}")
                 # Mostrar resumen de residuos (por año)
-                st.info(f"**Gestión de residuos (por año):** {format_num(em_residuos/dur)} kg CO₂e/ha·año → **Total sub-etapa:** {format_num(em_residuos)} kg CO₂e/ha")
+                st.info(f"**Gestión de residuos (por año):** {em_residuos/dur:.2f} kg CO₂e/ha·año → **Total sub-etapa:** {em_residuos:.2f} kg CO₂e/ha")
 
                 em_sub = em_fert_total + em_agroq + em_agua + em_energia + em_maq + em_residuos
                 prod_sub_total = prod * dur
@@ -2712,7 +2540,7 @@ def etapa_produccion_segmentada():
 
             em_total += em_sub
             prod_total += prod_sub_total
-            st.success(f"Emisiones totales en sub-etapa '{nombre}': {format_num(em_sub)} kg CO₂e/ha para {dur} años")
+            st.success(f"Emisiones totales en sub-etapa '{nombre}': {em_sub:.2f} kg CO₂e/ha para {dur} años")
 
         emisiones_fuentes["Fertilizantes"] = total_fert
         emisiones_fuentes["Agroquímicos"] = total_agroq
@@ -2763,15 +2591,14 @@ def etapa_anual():
         st.markdown("---")
         st.subheader("Fertilizantes")
         fert = ingresar_fertilizantes("ciclo_tipico", unidad_cantidad="ciclo")
-        em_fert_prod, em_fert_co2_urea, em_fert_n2o_dir, em_fert_n2o_ind, desglose_fert = calcular_emisiones_fertilizantes(fert, 1)
-        em_fert_total = em_fert_prod + em_fert_co2_urea + em_fert_n2o_dir + em_fert_n2o_ind
+        em_fert_prod, em_fert_n2o_dir, em_fert_n2o_ind, desglose_fert = calcular_emisiones_fertilizantes(fert, 1)
+        em_fert_total = em_fert_prod + em_fert_n2o_dir + em_fert_n2o_ind
         st.info(
             f"**Fertilizantes (por ciclo):**\n"
-            f"- Producción de fertilizantes: {format_num(em_fert_prod)} kg CO₂e/ha·ciclo\n"
-            f"- Emisiones CO₂ por hidrólisis de urea: {format_num(em_fert_co2_urea)} kg CO₂e/ha·ciclo\n"
-            f"- Emisiones directas N₂O: {format_num(em_fert_n2o_dir)} kg CO₂e/ha·ciclo\n"
-            f"- Emisiones indirectas N₂O: {format_num(em_fert_n2o_ind)} kg CO₂e/ha·ciclo\n"
-            f"- **Total fertilizantes:** {format_num(em_fert_total)} kg CO₂e/ha·ciclo"
+            f"- Producción de fertilizantes: {em_fert_prod:.2f} kg CO₂e/ha·ciclo\n"
+            f"- Emisiones directas N₂O: {em_fert_n2o_dir:.2f} kg CO₂e/ha·ciclo\n"
+            f"- Emisiones indirectas N₂O: {em_fert_n2o_ind:.2f} kg CO₂e/ha·ciclo\n"
+            f"- **Total fertilizantes:** {em_fert_total:.2f} kg CO₂e/ha·ciclo"
         )
 
         st.markdown("---")
@@ -2780,7 +2607,7 @@ def etapa_anual():
         em_agroq = calcular_emisiones_agroquimicos(agroq, 1)
         st.info(
             f"**Agroquímicos (por ciclo):**\n"
-            f"- **Total agroquímicos:** {format_num(em_agroq)} kg CO₂e/ha·ciclo"
+            f"- **Total agroquímicos:** {em_agroq:.2f} kg CO₂e/ha·ciclo"
         )
 
         st.markdown("---")
@@ -2794,13 +2621,13 @@ def etapa_anual():
         em_maq = calcular_emisiones_maquinaria(labores, 1)
         st.info(
             f"**Maquinaria (por ciclo):**\n"
-            f"- **Total maquinaria:** {format_num(em_maq)} kg CO₂e/ha·ciclo"
+            f"- **Total maquinaria:** {em_maq:.2f} kg CO₂e/ha·ciclo"
         )
 
         em_residuos, detalle_residuos = ingresar_gestion_residuos("ciclo_tipico")
         st.info(
             f"**Gestión de residuos (por ciclo):**\n"
-            f"- **Total gestión de residuos:** {format_num(em_residuos)} kg CO₂e/ha·ciclo"
+            f"- **Total gestión de residuos:** {em_residuos:.2f} kg CO₂e/ha·ciclo"
         )
 
         em_ciclo = em_fert_total + em_agroq + em_agua + em_energia + em_maq + em_residuos
@@ -2833,8 +2660,8 @@ def etapa_anual():
         emisiones_fuentes["Maquinaria"] = em_maq * n_ciclos
         emisiones_fuentes["Residuos"] = em_residuos * n_ciclos
 
-        st.info(f"Emisiones por ciclo típico: {format_num(em_ciclo)} kg CO₂e/ha·ciclo")
-        st.info(f"Emisiones anuales (todos los ciclos): {format_num(em_total)} kg CO₂e/ha·año")
+        st.info(f"Emisiones por ciclo típico: {em_ciclo:.2f} kg CO₂e/ha·ciclo")
+        st.info(f"Emisiones anuales (todos los ciclos): {em_total:.2f} kg CO₂e/ha·año")
 
         emisiones_etapas["Anual"] = em_total
         produccion_etapas["Anual"] = prod_total
@@ -2858,15 +2685,14 @@ def etapa_anual():
 
             st.subheader("Fertilizantes")
             fert = ingresar_fertilizantes(f"ciclo_{i+1}", unidad_cantidad="ciclo")
-            em_fert_prod, em_fert_co2_urea, em_fert_n2o_dir, em_fert_n2o_ind, desglose_fert = calcular_emisiones_fertilizantes(fert, 1)
-            em_fert_total = em_fert_prod + em_fert_co2_urea + em_fert_n2o_dir + em_fert_n2o_ind
+            em_fert_prod, em_fert_n2o_dir, em_fert_n2o_ind, desglose_fert = calcular_emisiones_fertilizantes(fert, 1)
+            em_fert_total = em_fert_prod + em_fert_n2o_dir + em_fert_n2o_ind
             st.info(
                 f"**Fertilizantes (Ciclo {i+1}):**\n"
-                f"- Producción de fertilizantes: {format_num(em_fert_prod)} kg CO₂e/ha\n"
-                f"- Emisiones CO₂ por hidrólisis de urea: {format_num(em_fert_co2_urea)} kg CO₂e/ha\n"
-                f"- Emisiones directas N₂O: {format_num(em_fert_n2o_dir)} kg CO₂e/ha\n"
-                f"- Emisiones indirectas N₂O: {format_num(em_fert_n2o_ind)} kg CO₂e/ha\n"
-                f"- **Total fertilizantes:** {format_num(em_fert_total)} kg CO₂e/ha"
+                f"- Producción de fertilizantes: {em_fert_prod:.2f} kg CO₂e/ha\n"
+                f"- Emisiones directas N₂O: {em_fert_n2o_dir:.2f} kg CO₂e/ha\n"
+                f"- Emisiones indirectas N₂O: {em_fert_n2o_ind:.2f} kg CO₂e/ha\n"
+                f"- **Total fertilizantes:** {em_fert_total:.2f} kg CO₂e/ha"
             )
 
             st.subheader("Agroquímicos y pesticidas")
@@ -2874,7 +2700,7 @@ def etapa_anual():
             em_agroq = calcular_emisiones_agroquimicos(agroq, 1)
             st.info(
                 f"**Agroquímicos (Ciclo {i+1}):**\n"
-                f"- **Total agroquímicos:** {format_num(em_agroq)} kg CO₂e/ha"
+                f"- **Total agroquímicos:** {em_agroq:.2f} kg CO₂e/ha"
             )
 
             st.subheader("Riego")
@@ -2886,13 +2712,13 @@ def etapa_anual():
             em_maq = calcular_emisiones_maquinaria(labores, 1)
             st.info(
                 f"**Maquinaria (Ciclo {i+1}):**\n"
-                f"- **Total maquinaria:** {format_num(em_maq)} kg CO₂e/ha"
+                f"- **Total maquinaria:** {em_maq:.2f} kg CO₂e/ha"
             )
 
             em_residuos, detalle_residuos = ingresar_gestion_residuos(f"ciclo_{i+1}")
             st.info(
                 f"**Gestión de residuos (Ciclo {i+1}):**\n"
-                f"- **Total gestión de residuos:** {format_num(em_residuos)} kg CO₂e/ha"
+                f"- **Total gestión de residuos:** {em_residuos:.2f} kg CO₂e/ha"
             )
 
             em_ciclo = em_fert_total + em_agroq + em_agua + em_energia + em_maq + em_residuos
@@ -2924,12 +2750,12 @@ def etapa_anual():
             total_maq += em_maq
             total_res += em_residuos
 
-            st.info(f"Emisiones en ciclo {i+1}: {format_num(em_ciclo)} kg CO₂e/ha·ciclo")
+            st.info(f"Emisiones en ciclo {i+1}: {em_ciclo:.2f} kg CO₂e/ha·ciclo")
 
         if n_ciclos > 1:
             st.markdown("### Comparación de emisiones entre ciclos")
             for ciclo, em, prod in emisiones_ciclos:
-                st.write(f"Ciclo {ciclo}: {format_num(em)} kg CO₂e/ha·ciclo, Producción: {format_num(prod)} kg/ha·ciclo")
+                st.write(f"Ciclo {ciclo}: {em:.2f} kg CO₂e/ha·ciclo, Producción: {prod:.2f} kg/ha·ciclo")
 
         emisiones_fuentes["Fertilizantes"] = total_fert
         emisiones_fuentes["Agroquímicos"] = total_agroq
@@ -2960,108 +2786,36 @@ except:
     try:
         locale.setlocale(locale.LC_ALL, 'es_ES')
     except:
-        try:
-            locale.setlocale(locale.LC_ALL, 'Spanish_Spain.1252')
-        except:
-            locale.setlocale(locale.LC_ALL, '')
+        locale.setlocale(locale.LC_ALL, '')
 
-# Configurar Plotly para formato español
-import plotly.io as pio
-try:
-    if pio.kaleido and pio.kaleido.scope:
-        pio.kaleido.scope.default_format = "png"
-except (AttributeError, TypeError):
-    pass  # Kaleido no está disponible o no configurado
-px.defaults.template = "plotly_white"
-
-# Configuración global para separadores en Plotly
-def configure_plotly_locale():
-    """Configura Plotly para usar formato español"""
-    return {
-        'separators': ',.',  # Coma para decimales, punto para miles
-        'locale': 'es'
-    }
-
-def format_num(x, decimales=2):
-    """
-    Formatea números con coma como separador decimal y punto como separador de miles
-    """
+def format_num(x, decimales=6):
     try:
-        if pd.isnull(x) or x is None:
+        if pd.isnull(x):
             return ""
-        if isinstance(x, (float, int)):
-            # Si es mayor o igual a 10, usa 2 decimales máximo
+        if isinstance(x, float) or isinstance(x, int):
+            # Si es mayor o igual a 10, usa 2 decimales
             if abs(x) >= 10:
-                # Formatear con 2 decimales
-                formatted = locale.format_string("%.2f", x, grouping=True)
+                return locale.format_string("%.2f", x, grouping=True)
+            # Si es menor a 10, muestra hasta 6 decimales pero sin ceros innecesarios
+            # Usar locale.format_string para respetar el separador decimal
+            # Elimina ceros innecesarios después de formatear
+            s = locale.format_string(f"%.{decimales}f", x, grouping=True)
+            if "," in s:
+                s = s.rstrip('0').rstrip(',')
             else:
-                # Para números menores a 10, usar más decimales pero eliminar ceros innecesarios
-                max_decimales = min(decimales, 6)  # Máximo 6 decimales
-                formatted = locale.format_string(f"%.{max_decimales}f", x, grouping=True)
-                
-                # Eliminar ceros innecesarios al final
-                if ',' in formatted:
-                    formatted = formatted.rstrip('0').rstrip(',')
-                elif '.' in formatted:
-                    formatted = formatted.rstrip('0').rstrip('.')
-            
-            # Asegurar formato español: coma decimal, punto miles
-            # Si el locale no funcionó correctamente, forzar el formato español
-            if '.' in formatted and ',' not in formatted:
-                # Solo hay punto, probablemente es separador decimal en formato inglés
-                # Convertir a formato español si no hay separador de miles
-                parts = formatted.split('.')
-                if len(parts) == 2 and len(parts[0]) <= 3:
-                    # Es separador decimal, convertir a coma
-                    formatted = parts[0] + ',' + parts[1]
-            
-            return formatted
-        return str(x)
+                s = s.rstrip('0').rstrip('.')
+            return s
+        return x
     except Exception:
-        return str(x) if x is not None else ""
+        return x
 
-def format_percent(x, decimales=1):
-    """
-    Formatea porcentajes con coma como separador decimal
-    Asume que x ya está en formato de porcentaje (0-100)
-    """
+def format_percent(x):
     try:
-        if pd.isnull(x) or x is None:
+        if pd.isnull(x):
             return ""
-        # NO multiplicar por 100 porque ya viene en formato de porcentaje
-        formatted = locale.format_string(f"%.{decimales}f", x, grouping=True)
-        
-        # Asegurar formato español para porcentajes
-        if '.' in formatted and ',' not in formatted:
-            parts = formatted.split('.')
-            if len(parts) == 2 and len(parts[0]) <= 3:
-                formatted = parts[0] + ',' + parts[1]
-        
-        return formatted + "%"
+        return locale.format_string("%.1f", x, grouping=True)
     except Exception:
-        return str(x) + "%" if x is not None else ""
-
-def format_fraction_as_percent(x, decimales=1):
-    """
-    Formatea fracciones (0.0-1.0) como porcentajes con coma como separador decimal
-    Multiplica por 100 para convertir fracción a porcentaje
-    """
-    try:
-        if pd.isnull(x) or x is None:
-            return ""
-        # Multiplicar por 100 para convertir fracción a porcentaje
-        percentage = x * 100
-        formatted = locale.format_string(f"%.{decimales}f", percentage, grouping=True)
-        
-        # Asegurar formato español para porcentajes
-        if '.' in formatted and ',' not in formatted:
-            parts = formatted.split('.')
-            if len(parts) == 2 and len(parts[0]) <= 3:
-                formatted = parts[0] + ',' + parts[1]
-        
-        return formatted + "%"
-    except Exception:
-        return str(x * 100) + "%" if x is not None else ""
+        return x
 
 # -----------------------------
 # Resultados Finales
@@ -3088,6 +2842,8 @@ import numpy as np
 ###################################################
 
 def mostrar_resultados_anual(em_total, prod_total):
+    import plotly.express as px
+    import plotly.graph_objects as go
 
     st.header("Resultados Finales")
     st.info(
@@ -3316,13 +3072,12 @@ def mostrar_resultados_anual(em_total, prod_total):
                             st.markdown("**Tabla: Desglose de fertilizantes (orgánicos e inorgánicos)**")
                             st.dataframe(
                                 df_fert[[
-                                    "Tipo fertilizante", "tipo", "cantidad", "emision_produccion", "emision_co2_urea",
+                                    "Tipo fertilizante", "tipo", "cantidad", "emision_produccion",
                                     "emision_n2o_directa", "emision_n2o_ind_volatilizacion", "emision_n2o_ind_lixiviacion",
                                     "emision_n2o_indirecta", "total", "Emisiones (kg CO₂e/kg fruta·ciclo)", "% contribución"
                                 ]].style.format({
                                     "cantidad": format_num,
                                     "emision_produccion": format_num,
-                                    "emision_co2_urea": format_num,
                                     "emision_n2o_directa": format_num,
                                     "emision_n2o_ind_volatilizacion": format_num,
                                     "emision_n2o_ind_lixiviacion": format_num,
@@ -3333,81 +3088,23 @@ def mostrar_resultados_anual(em_total, prod_total):
                                 }),
                                 hide_index=True
                             )
-                            st.caption("Unidades: cantidad (kg/ha·ciclo), emisiones (kg CO₂e/ha), % sobre el total de fertilizantes. N₂O indirecta se desglosa en volatilización y lixiviación. CO₂ urea incluye hidrólisis según IPCC 2006.")
-                            
-                            # --- NUEVO: Gráfico de torta Orgánicos vs Inorgánicos ---
-                            st.markdown("**Gráfico: Contribución orgánicos vs inorgánicos (torta)**")
-                            df_resumen_tipo = df_fert.groupby("Tipo fertilizante")["total"].sum().reset_index()
-                            if len(df_resumen_tipo) > 0:
-                                fig_pie_tipo = px.pie(
-                                    values=df_resumen_tipo["total"],
-                                    names=df_resumen_tipo["Tipo fertilizante"],
-                                    title="Contribución orgánicos vs inorgánicos",
-                                    color_discrete_sequence=["#66c2a5", "#fc8d62"],
-                                    hole=0.3
-                                )
-                                fig_pie_tipo.update_traces(textinfo='percent+label')
-                                fig_pie_tipo.update_layout(showlegend=True, height=400)
-                                st.plotly_chart(fig_pie_tipo, use_container_width=True, key=get_unique_key())
-                            
-                            # --- NUEVO: Gráficos de torta por cada tipo de fertilizante ---
-                            for tipo_cat in ["Orgánico", "Inorgánico"]:
-                                df_tipo_pie = df_fert[df_fert["Tipo fertilizante"] == tipo_cat]
-                                if not df_tipo_pie.empty and len(df_tipo_pie) > 1:  # Solo si hay más de un fertilizante del tipo
-                                    st.markdown(f"**Gráfico: Contribución de cada fertilizante {tipo_cat.lower()} (torta)**")
-                                    # Crear etiquetas únicas para fertilizantes duplicados
-                                    tipo_counts = {}
-                                    etiquetas_unicas = []
-                                    for _, row in df_tipo_pie.iterrows():
-                                        tipo_base = row["tipo"]
-                                        if tipo_base in tipo_counts:
-                                            tipo_counts[tipo_base] += 1
-                                            etiquetas_unicas.append(f"{tipo_base} ({tipo_counts[tipo_base]})")
-                                        else:
-                                            tipo_counts[tipo_base] = 1
-                                            etiquetas_unicas.append(tipo_base)
-                                    
-                                    fig_pie_individual = px.pie(
-                                        values=df_tipo_pie["total"],
-                                        names=etiquetas_unicas,
-                                        title=f"Contribución de cada fertilizante {tipo_cat.lower()}",
-                                        hole=0.3
-                                    )
-                                    fig_pie_individual.update_traces(textinfo='percent+label')
-                                    fig_pie_individual.update_layout(showlegend=True, height=400)
-                                    st.plotly_chart(fig_pie_individual, use_container_width=True, key=get_unique_key())
-                            
+                            st.caption("Unidades: cantidad (kg/ha·ciclo), emisiones (kg CO₂e/ha), % sobre el total de fertilizantes. N₂O indirecta se desglosa en volatilización y lixiviación.")
                             # --- Gráficos de barras apiladas por tipo de emisión (orgánico e inorgánico por separado) ---
                             for tipo_cat in ["Orgánico", "Inorgánico"]:
                                 df_tipo = df_fert[df_fert["Tipo fertilizante"] == tipo_cat]
                                 if not df_tipo.empty:
                                     st.markdown(f"**Gráfico: Emisiones por fertilizante {tipo_cat.lower()} y tipo de emisión (kg CO₂e/ha·ciclo)**")
-                                    
-                                    # Crear etiquetas únicas para fertilizantes duplicados en gráficos de barras
-                                    tipo_counts = {}
-                                    etiquetas_unicas = []
-                                    for _, row in df_tipo.iterrows():
-                                        tipo_base = row["tipo"]
-                                        if tipo_base in tipo_counts:
-                                            tipo_counts[tipo_base] += 1
-                                            etiquetas_unicas.append(f"{tipo_base} ({tipo_counts[tipo_base]})")
-                                        else:
-                                            tipo_counts[tipo_base] = 1
-                                            etiquetas_unicas.append(tipo_base)
-                                    
-                                    labels = etiquetas_unicas
+                                    labels = df_tipo["tipo"]
                                     em_prod = df_tipo["emision_produccion"].values
-                                    em_co2_urea = df_tipo["emision_co2_urea"].values
                                     em_n2o_dir = df_tipo["emision_n2o_directa"].values
                                     em_n2o_ind_vol = df_tipo["emision_n2o_ind_volatilizacion"].values
                                     em_n2o_ind_lix = df_tipo["emision_n2o_ind_lixiviacion"].values
                                     fig_fert = go.Figure()
                                     fig_fert.add_bar(x=labels, y=em_prod, name="Producción")
-                                    fig_fert.add_bar(x=labels, y=em_co2_urea, name="CO₂ hidrólisis urea")
                                     fig_fert.add_bar(x=labels, y=em_n2o_dir, name="N₂O directa")
                                     fig_fert.add_bar(x=labels, y=em_n2o_ind_vol, name="N₂O indirecta (volatilización)")
                                     fig_fert.add_bar(x=labels, y=em_n2o_ind_lix, name="N₂O indirecta (lixiviación)")
-                                    totales = em_prod + em_co2_urea + em_n2o_dir + em_n2o_ind_vol + em_n2o_ind_lix
+                                    totales = em_prod + em_n2o_dir + em_n2o_ind_vol + em_n2o_ind_lix
                                     textos_tot = [format_num(v) for v in totales]
                                     fig_fert.add_trace(go.Scatter(
                                         x=labels,
@@ -3653,46 +3350,6 @@ def mostrar_resultados_anual(em_total, prod_total):
                             )
                             fig_riego.update_yaxes(range=[0, y_max_riego * 1.15])
                             st.plotly_chart(fig_riego, use_container_width=True, key=get_unique_key())
-
-                            # --- Gráficos de torta por actividad individual: contribución agua vs energía ---
-                            actividades_unicas = df_riego["Actividad"].unique()
-                            for actividad in actividades_unicas:
-                                df_act = df_riego[df_riego["Actividad"] == actividad]
-                                if len(df_act) == 1:  # Una sola fila por actividad
-                                    row = df_act.iloc[0]
-                                    em_agua = row["Emisiones agua (kg CO₂e)"]
-                                    em_energia = row["Emisiones energía (kg CO₂e)"]
-                                    total_act = em_agua + em_energia
-                                    
-                                    # Solo crear gráfico si hay emisiones totales > 0
-                                    if total_act > 0:
-                                        st.markdown(f"**Gráfico: Contribución agua vs energía en la actividad '{actividad}' (torta, kg CO₂e/ha·ciclo)**")
-                                        
-                                        # Datos para el gráfico de torta
-                                        labels = []
-                                        values = []
-                                        if em_agua > 0:
-                                            labels.append("Agua")
-                                            values.append(em_agua)
-                                        if em_energia > 0:
-                                            labels.append("Energía")
-                                            values.append(em_energia)
-                                        
-                                        if len(values) > 0:
-                                            fig_pie_act = px.pie(
-                                                values=values,
-                                                names=labels,
-                                                title=f"Contribución agua vs energía en '{actividad}'",
-                                                color_discrete_sequence=["#4fc3f7", "#0288d1"],
-                                                hole=0.3
-                                            )
-                                            fig_pie_act.update_traces(textinfo='percent+label')
-                                            fig_pie_act.update_layout(showlegend=True, height=400)
-                                            st.plotly_chart(fig_pie_act, use_container_width=True, key=get_unique_key())
-                                        else:
-                                            st.info(f"La actividad '{actividad}' no tiene emisiones de agua ni energía.")
-                                    else:
-                                        st.info(f"La actividad '{actividad}' no tiene emisiones totales.")
                         else:
                             st.info("No se ingresaron actividades de riego para este ciclo.")
                     # --- RESIDUOS ---
@@ -3781,6 +3438,8 @@ def mostrar_resultados_anual(em_total, prod_total):
 ###################################################
 
 def mostrar_resultados_perenne(em_total, prod_total):
+    import plotly.express as px
+    import plotly.graph_objects as go
 
     st.header("Resultados Finales")
     st.info(
@@ -3834,40 +3493,23 @@ def mostrar_resultados_perenne(em_total, prod_total):
         st.markdown("#### Evolución temporal de emisiones año a año")
         df_evol = pd.DataFrame(emisiones_anuales, columns=["Año", "Emisiones (kg CO₂e/ha)", "Producción (kg/ha)", "Etapa"])
         df_evol["Emisiones_texto"] = df_evol["Emisiones (kg CO₂e/ha)"].apply(format_num)
-        
         fig_evol = px.bar(
             df_evol,
             x="Año",
             y="Emisiones (kg CO₂e/ha)",
             color="Etapa",
             color_discrete_sequence=px.colors.qualitative.Set2,
-            title="Evolución de emisiones año a año",
-            text="Emisiones_texto"  # Agregar texto directamente en las barras
+            title="Evolución de emisiones año a año"
         )
-        
-        # Configurar posición del texto dentro de las barras
-        fig_evol.update_traces(
-            textposition='inside',  # Texto dentro de las barras
-            textangle=0,  # Texto horizontal
-            textfont=dict(
-                size=10,
-                color='white'  # Color blanco para contraste
-            )
-        )
-        
-        # Mejorar el layout para mejor visualización
-        fig_evol.update_layout(
-            showlegend=True, 
-            height=500,  # Aumentar altura para mejor visualización
-            xaxis_title="Año",
-            yaxis_title="Emisiones (kg CO₂e/ha)",
-            xaxis=dict(
-                tickmode='linear',
-                tick0=df_evol["Año"].min(),
-                dtick=1
-            )
-        )
-        
+        fig_evol.add_trace(go.Scatter(
+            x=df_evol["Año"],
+            y=df_evol["Emisiones (kg CO₂e/ha)"],
+            text=df_evol["Emisiones_texto"],
+            mode="text",
+            textposition="top center",
+            showlegend=False
+        ))
+        fig_evol.update_layout(showlegend=True, height=400)
         st.plotly_chart(fig_evol, use_container_width=True, key=get_unique_key())
 
     st.markdown("---")
@@ -4012,13 +3654,12 @@ def mostrar_resultados_perenne(em_total, prod_total):
                         st.markdown("**Tabla: Desglose de fertilizantes (orgánicos e inorgánicos)**")
                         st.dataframe(
                             df_fert[[
-                                "Tipo fertilizante", "tipo", "cantidad", "emision_produccion", "emision_co2_urea",
+                                "Tipo fertilizante", "tipo", "cantidad", "emision_produccion",
                                 "emision_n2o_directa", "emision_n2o_ind_volatilizacion", "emision_n2o_ind_lixiviacion",
                                 "emision_n2o_indirecta", "total", "Emisiones (kg CO₂e/kg fruta)", "% contribución"
                             ]].style.format({
                                 "cantidad": format_num,
                                 "emision_produccion": format_num,
-                                "emision_co2_urea": format_num,
                                 "emision_n2o_directa": format_num,
                                 "emision_n2o_ind_volatilizacion": format_num,
                                 "emision_n2o_ind_lixiviacion": format_num,
@@ -4036,17 +3677,15 @@ def mostrar_resultados_perenne(em_total, prod_total):
                                 st.markdown(f"**Gráfico: Emisiones por fertilizante {tipo_cat.lower()} y tipo de emisión (kg CO₂e/ha)**")
                                 labels = df_tipo["tipo"]
                                 em_prod = df_tipo["emision_produccion"].values
-                                em_co2_urea = df_tipo["emision_co2_urea"].values
                                 em_n2o_dir = df_tipo["emision_n2o_directa"].values
                                 em_n2o_ind_vol = df_tipo["emision_n2o_ind_volatilizacion"].values
                                 em_n2o_ind_lix = df_tipo["emision_n2o_ind_lixiviacion"].values
                                 fig_fert = go.Figure()
                                 fig_fert.add_bar(x=labels, y=em_prod, name="Producción")
-                                fig_fert.add_bar(x=labels, y=em_co2_urea, name="CO₂ hidrólisis urea")
                                 fig_fert.add_bar(x=labels, y=em_n2o_dir, name="N₂O directa")
                                 fig_fert.add_bar(x=labels, y=em_n2o_ind_vol, name="N₂O indirecta (volatilización)")
                                 fig_fert.add_bar(x=labels, y=em_n2o_ind_lix, name="N₂O indirecta (lixiviación)")
-                                totales = em_prod + em_co2_urea + em_n2o_dir + em_n2o_ind_vol + em_n2o_ind_lix
+                                totales = em_prod + em_n2o_dir + em_n2o_ind_vol + em_n2o_ind_lix
                                 textos_tot = [format_num(v) for v in totales]
                                 fig_fert.add_trace(go.Scatter(
                                     x=labels,
