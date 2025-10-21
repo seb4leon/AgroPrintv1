@@ -3,13 +3,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import plotly.express as px
 import plotly.graph_objects as go
-import sqlite3
-import json
-import gspread
-from google.oauth2.service_account import Credentials
-import hashlib
-import uuid
-from datetime import datetime
 
 # --- Factores de emisión y parámetros configurables (modificar aquí) ---
 
@@ -416,585 +409,6 @@ def get_unique_key():
     st.session_state.plot_counter += 1
     return f"plot_{st.session_state.plot_counter}"
 
-# =============================================================================
-# CONFIGURACIÓN GOOGLE SHEETS - SISTEMA DE ALMACENAMIENTO PERSISTENTE
-# =============================================================================
-
-def init_google_sheets():
-    """Inicializa la conexión con Google Sheets"""
-    try:
-        # Configuración de Google Sheets
-        SCOPE = ['https://www.googleapis.com/auth/spreadsheets']
-        
-        # Opción 1: Desde secrets de Streamlit (RECOMENDADO para producción)
-        if 'gsheets_credentials' in st.secrets:
-            creds_dict = dict(st.secrets['gsheets_credentials'])
-            creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPE)
-        # Opción 2: Desde archivo JSON (para desarrollo local)
-        else:
-            try:
-                creds = Credentials.from_service_account_file('agroprint-credentials.json', scopes=SCOPE)
-            except:
-                st.error("❌ No se encontraron credenciales de Google Sheets")
-                return None
-        
-        client = gspread.authorize(creds)
-        
-        # ID de tu hoja de cálculo de Google Sheets
-        SPREADSHEET_ID = st.secrets.get('SPREADSHEET_ID', 'pon_aqui_tu_spreadsheet_id')
-        
-        # Abrir la hoja de cálculo
-        spreadsheet = client.open_by_key(SPREADSHEET_ID)
-        
-        return spreadsheet
-    except Exception as e:
-        st.error(f"❌ Error conectando con Google Sheets: {e}")
-        return None
-
-# =============================================================================
-# CLASES PARA GESTIÓN DE USUARIOS Y PROYECTOS
-# =============================================================================
-
-class UserManager:
-    """Gestiona usuarios y autenticación"""
-    
-    def __init__(self, spreadsheet):
-        self.spreadsheet = spreadsheet
-        self.users_sheet = spreadsheet.worksheet('usuarios')
-        
-    def user_exists(self, username):
-        """Verifica si un usuario ya existe"""
-        try:
-            users = self.users_sheet.get_all_records()
-            return any(user['username'].lower() == username.lower() for user in users)
-        except:
-            return False
-    
-    def register_user(self, username, password):
-        """Registra un nuevo usuario"""
-        try:
-            if self.user_exists(username):
-                return False, "El usuario ya existe"
-            
-            # Hash simple de la contraseña
-            password_hash = hashlib.sha256(password.encode()).hexdigest()
-            user_id = str(uuid.uuid4())[:8]
-            
-            # Agregar usuario a la hoja
-            self.users_sheet.append_row([
-                user_id,
-                username,
-                password_hash,
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'active'
-            ])
-            
-            return True, user_id
-        except Exception as e:
-            return False, f"Error al registrar: {str(e)}"
-    
-    def authenticate_user(self, username, password):
-        """Autentica un usuario"""
-        try:
-            users = self.users_sheet.get_all_records()
-            password_hash = hashlib.sha256(password.encode()).hexdigest()
-            
-            for user in users:
-                if (user['username'].lower() == username.lower() and 
-                    user['password_hash'] == password_hash and
-                    user['status'] == 'active'):
-                    return True, user['user_id']
-            
-            return False, "Usuario o contraseña incorrectos"
-        except:
-            return False, "Error de autenticación"
-
-class ProjectManager:
-    """Gestiona proyectos de usuarios"""
-    
-    def __init__(self, spreadsheet):
-        self.spreadsheet = spreadsheet
-        self.projects_sheet = spreadsheet.worksheet('proyectos')
-        self.calculos_sheet = spreadsheet.worksheet('calculos')
-        self.caracterizacion_sheet = spreadsheet.worksheet('datos_caracterizacion')
-    
-    def create_project(self, user_id, project_name, cultivo, tipo, ubicacion):
-        """Crea un nuevo proyecto para un usuario"""
-        try:
-            project_id = str(uuid.uuid4())[:8]
-            
-            self.projects_sheet.append_row([
-                project_id,
-                user_id,
-                project_name,
-                cultivo,
-                tipo,
-                ubicacion,
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'active'
-            ])
-            
-            return project_id
-        except Exception as e:
-            st.error(f"Error creando proyecto: {e}")
-            return None
-    
-    def get_user_projects(self, user_id):
-        """Obtiene todos los proyectos de un usuario"""
-        try:
-            projects = self.projects_sheet.get_all_records()
-            user_projects = [p for p in projects if p['user_id'] == user_id and p['status'] == 'active']
-            return user_projects
-        except Exception as e:
-            st.error(f"Error obteniendo proyectos: {e}")
-            return []
-    
-    def save_calculation(self, project_id, calculation_data, results_data):
-        """Guarda un cálculo en Google Sheets"""
-        try:
-            # Guardar en hoja de cálculos
-            self.calculos_sheet.append_row([
-                project_id,
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                str(calculation_data),
-                str(results_data)
-            ])
-            return True
-        except Exception as e:
-            st.error(f"Error guardando cálculo: {e}")
-            return False
-    
-    def save_caracterizacion(self, project_id, caracterizacion_data):
-        """Guarda datos de caracterización general"""
-        try:
-            self.caracterizacion_sheet.append_row([
-                project_id,
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                caracterizacion_data.get('cultivo', ''),
-                caracterizacion_data.get('tipo', ''),
-                caracterizacion_data.get('morfologia', ''),
-                caracterizacion_data.get('ubicacion', ''),
-                caracterizacion_data.get('tipo_suelo', ''),
-                caracterizacion_data.get('clima', ''),
-                caracterizacion_data.get('informacion_extra', ''),
-                str(caracterizacion_data)  # Backup completo
-            ])
-            return True
-        except Exception as e:
-            st.error(f"Error guardando caracterización: {e}")
-            return False
-
-# =============================================================================
-# SISTEMA DE BASE DE DATOS SQLITE (BACKUP)
-# =============================================================================
-
-def init_database():
-    """Inicializa la base de datos SQLite (como backup)"""
-    try:
-        conn = sqlite3.connect('carbon_footprint.db', check_same_thread=False)
-        c = conn.cursor()
-        
-        # Tabla para sesiones de usuarios
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS user_sessions (
-                session_id TEXT PRIMARY KEY,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                consent_given BOOLEAN DEFAULT FALSE,
-                user_data TEXT
-            )
-        ''')
-        
-        # Tabla para cálculos de huella de carbono
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS carbon_calculations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT,
-                calculation_type TEXT,
-                input_data TEXT,
-                results_data TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (session_id) REFERENCES user_sessions (session_id)
-            )
-        ''')
-        
-        conn.commit()
-        conn.close()
-        print("✅ Base de datos SQLite inicializada correctamente")
-    except Exception as e:
-        print(f"❌ Error inicializando base de datos SQLite: {e}")
-
-# Inicializar base de datos al inicio
-init_database()
-
-class NumpyEncoder(json.JSONEncoder):
-    """Encoder personalizado para manejar tipos NumPy en JSON"""
-    def default(self, obj):
-        if isinstance(obj, (np.integer, np.floating)):
-            return float(obj)
-        elif isinstance(obj, np.ndarray):
-            return obj.tolist()
-        elif isinstance(obj, np.bool_):
-            return bool(obj)
-        return super().default(obj)
-
-def guardar_calculo(session_id, calculation_type, input_data, results_data):
-    """Guarda los datos del cálculo en Google Sheets y SQLite local"""
-    
-    # Guardar en Google Sheets (PRINCIPAL - PERSISTENTE)
-    if 'spreadsheet' in st.session_state and st.session_state.spreadsheet:
-        project_manager = ProjectManager(st.session_state.spreadsheet)
-        
-        # Preparar datos para guardar
-        calculation_data = {
-            'tipo': calculation_type,
-            'input_data': input_data,
-            'results_data': results_data,
-            'fecha': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        }
-        
-        success = project_manager.save_calculation(
-            st.session_state.current_project_id,
-            calculation_data,
-            results_data
-        )
-        
-        if success:
-            print(f"✅ Cálculo guardado en Google Sheets: {calculation_type}")
-        else:
-            print(f"⚠️ Error guardando en Google Sheets, usando SQLite local")
-    
-    # Backup en SQLite local (SECUNDARIO)
-    try:
-        conn = sqlite3.connect('carbon_footprint.db', check_same_thread=False)
-        c = conn.cursor()
-        
-        # Primero asegurarnos de que la sesión existe
-        c.execute(
-            'INSERT OR IGNORE INTO user_sessions (session_id) VALUES (?)',
-            (session_id,)
-        )
-        
-        # Serializar datos usando el encoder personalizado
-        input_json = json.dumps(input_data, ensure_ascii=False, cls=NumpyEncoder)
-        results_json = json.dumps(results_data, ensure_ascii=False, cls=NumpyEncoder)
-        
-        # Guardar el cálculo
-        c.execute('''
-            INSERT INTO carbon_calculations 
-            (session_id, calculation_type, input_data, results_data)
-            VALUES (?, ?, ?, ?)
-        ''', (
-            session_id,
-            calculation_type,
-            input_json,
-            results_json
-        ))
-        
-        # Actualizar última actividad
-        c.execute(
-            'UPDATE user_sessions SET last_activity = CURRENT_TIMESTAMP WHERE session_id = ?',
-            (session_id,)
-        )
-        
-        conn.commit()
-        conn.close()
-        print(f"✅ Cálculo guardado en SQLite: {calculation_type}")
-        return True
-    except Exception as e:
-        print(f"❌ Error al guardar datos en SQLite: {str(e)}")
-        return False
-
-def obtener_calculos_usuario(session_id):
-    """Obtiene todos los cálculos de un usuario"""
-    try:
-        conn = sqlite3.connect('carbon_footprint.db', check_same_thread=False)
-        c = conn.cursor()
-        
-        c.execute('''
-            SELECT calculation_type, input_data, results_data, created_at 
-            FROM carbon_calculations 
-            WHERE session_id = ? 
-            ORDER BY created_at DESC
-        ''', (session_id,))
-        
-        resultados = c.fetchall()
-        conn.close()
-        
-        calculos = []
-        for calc in resultados:
-            calculos.append({
-                'tipo': calc[0],
-                'inputs': json.loads(calc[1]),
-                'resultados': json.loads(calc[2]),
-                'fecha': calc[3]
-            })
-        
-        return calculos
-    except Exception as e:
-        print(f"Error obteniendo cálculos: {str(e)}")
-        return []
-
-# =============================================================================
-# SISTEMA DE USUARIOS Y PROYECTOS - OBLIGATORIO
-# =============================================================================
-
-def mostrar_sistema_usuarios():
-    """Sistema completo de usuarios, proyectos y almacenamiento persistente"""
-    
-    # Inicializar Google Sheets
-    if 'spreadsheet' not in st.session_state:
-        with st.spinner("🔄 Conectando con base de datos..."):
-            st.session_state.spreadsheet = init_google_sheets()
-    
-    # Si no hay conexión, mostrar error
-    if st.session_state.spreadsheet is None:
-        st.error("""
-        ❌ **Error de conexión con la base de datos**
-        
-        No se pudo conectar con el sistema de almacenamiento. Por favor:
-        1. Verifica tu conexión a internet
-        2. Intenta recargar la página
-        3. Si el problema persiste, contacta al administrador
-        
-        **Solución temporal:** Puedes usar el sistema en modo local (los datos se perderán al cerrar)
-        """)
-        
-        # Modo local temporal
-        if st.button("🔄 Usar modo local temporal"):
-            st.session_state.user_authenticated = True
-            st.session_state.current_user_id = "local_user"
-            st.session_state.current_username = "Usuario Local"
-            st.session_state.current_project_id = "local_project"
-            st.session_state.current_project_name = "Proyecto Local"
-            st.rerun()
-        st.stop()
-    
-    # Inicializar managers
-    user_manager = UserManager(st.session_state.spreadsheet)
-    project_manager = ProjectManager(st.session_state.spreadsheet)
-    
-    # Estado de la aplicación
-    if 'user_authenticated' not in st.session_state:
-        st.session_state.user_authenticated = False
-    if 'current_user_id' not in st.session_state:
-        st.session_state.current_user_id = None
-    if 'current_project_id' not in st.session_state:
-        st.session_state.current_project_id = None
-    
-    # =========================================================================
-    # PANTALLA DE LOGIN/REGISTRO
-    # =========================================================================
-    if not st.session_state.user_authenticated:
-        st.markdown("---")
-        st.header("🔐 Acceso a AgroPrint - Sistema de Huella de Carbono")
-        
-        tab1, tab2 = st.tabs(["📝 Registrarse", "🔑 Iniciar Sesión"])
-        
-        with tab1:
-            st.subheader("Crear nueva cuenta")
-            with st.form("registro_form"):
-                new_username = st.text_input("Nombre de usuario*", placeholder="Elija un nombre de usuario único")
-                new_password = st.text_input("Contraseña*", type="password", placeholder="Cree una contraseña segura")
-                confirm_password = st.text_input("Confirmar contraseña*", type="password", placeholder="Repita la contraseña")
-                
-                # Términos y condiciones
-                col1, col2 = st.columns([1, 4])
-                with col1:
-                    accept_terms = st.checkbox("Acepto*", key="terms_reg")
-                with col2:
-                    with st.expander("📋 Ver términos y condiciones"):
-                        st.markdown("""
-                        ### Términos y Condiciones de Uso - AgroPrint
-                        
-                        **1. Uso de datos**  
-                        - Los datos ingresados se almacenan de forma segura
-                        - Se utilizan exclusivamente para calcular huella de carbono
-                        - Pueden usarse de forma anónima para mejorar el servicio
-                        
-                        **2. Responsabilidades**  
-                        - Proporcionar información veraz y precisa
-                        - Mantener la confidencialidad de su cuenta
-                        """)
-                
-                submitted = st.form_submit_button("✅ Crear cuenta", type="primary", use_container_width=True)
-                
-                if submitted:
-                    if not all([new_username, new_password, confirm_password]):
-                        st.error("❌ Todos los campos marcados con * son obligatorios")
-                    elif new_password != confirm_password:
-                        st.error("❌ Las contraseñas no coinciden")
-                    elif len(new_password) < 4:
-                        st.error("❌ La contraseña debe tener al menos 4 caracteres")
-                    elif not accept_terms:
-                        st.error("❌ Debe aceptar los términos y condiciones")
-                    else:
-                        success, message = user_manager.register_user(new_username, new_password)
-                        if success:
-                            st.success(f"✅ Cuenta creada exitosamente!")
-                            st.info("🎉 Ahora puede iniciar sesión con sus credenciales")
-                        else:
-                            st.error(f"❌ {message}")
-        
-        with tab2:
-            st.subheader("Acceder a mi cuenta")
-            with st.form("login_form"):
-                username = st.text_input("Usuario", placeholder="Su nombre de usuario")
-                password = st.text_input("Contraseña", type="password", placeholder="Su contraseña")
-                
-                submitted = st.form_submit_button("🚀 Iniciar Sesión", type="primary", use_container_width=True)
-                
-                if submitted:
-                    if not username or not password:
-                        st.error("❌ Usuario y contraseña son obligatorios")
-                    else:
-                        with st.spinner("Verificando credenciales..."):
-                            success, message = user_manager.authenticate_user(username, password)
-                            if success:
-                                st.session_state.user_authenticated = True
-                                st.session_state.current_user_id = message
-                                st.session_state.current_username = username
-                                st.success(f"✅ Bienvenido/a, {username}!")
-                                st.rerun()
-                            else:
-                                st.error(f"❌ {message}")
-        
-        # Información adicional
-        st.markdown("---")
-        st.info("""
-        **💡 ¿Por qué registrarse?**
-        - 💾 Guardar proyectos permanentemente
-        - 📊 Acceder a historial de cálculos  
-        - 🔄 Comparar diferentes escenarios
-        - 📈 Seguir evolución en el tiempo
-        """)
-        
-        st.stop()
-    
-    # =========================================================================
-    # PANTALLA PRINCIPAL (USUARIO AUTENTICADO)
-    # =========================================================================
-    
-    # Barra lateral con información del usuario
-    with st.sidebar:
-        st.markdown(f"### 👋 Hola, {st.session_state.current_username}")
-        st.markdown(f"**ID:** `{st.session_state.current_user_id}`")
-        
-        if st.button("🚪 Cerrar Sesión", use_container_width=True):
-            for key in ['user_authenticated', 'current_user_id', 'current_username', 
-                       'current_project_id', 'current_project_name']:
-                if key in st.session_state:
-                    del st.session_state[key]
-            st.rerun()
-    
-    # =========================================================================
-    # GESTIÓN DE PROYECTOS
-    # =========================================================================
-    
-    # Obtener proyectos del usuario
-    user_projects = project_manager.get_user_projects(st.session_state.current_user_id)
-    
-    # Panel de proyectos en sidebar
-    with st.sidebar:
-        st.markdown("---")
-        st.markdown("### 📁 Mis Proyectos")
-        
-        # Crear nuevo proyecto
-        with st.expander("➕ Nuevo Proyecto", expanded=len(user_projects)==0):
-            with st.form("nuevo_proyecto_form"):
-                project_name = st.text_input("Nombre del proyecto*", placeholder="Ej: Huerto Manzanas 2024")
-                cultivo = st.text_input("Cultivo principal*", placeholder="Ej: Manzanas, Uvas, etc.")
-                tipo = st.selectbox("Tipo de cultivo*", ["Anual", "Perenne"])
-                ubicacion = st.text_input("Ubicación*", placeholder="Ej: Región de O'Higgins, Chile")
-                
-                submitted = st.form_submit_button("✅ Crear Proyecto", use_container_width=True)
-                
-                if submitted:
-                    if not all([project_name, cultivo, tipo, ubicacion]):
-                        st.error("❌ Todos los campos son obligatorios")
-                    else:
-                        project_id = project_manager.create_project(
-                            st.session_state.current_user_id, 
-                            project_name, 
-                            cultivo, 
-                            tipo, 
-                            ubicacion
-                        )
-                        if project_id:
-                            st.success(f"✅ Proyecto '{project_name}' creado!")
-                            st.session_state.current_project_id = project_id
-                            st.session_state.current_project_name = project_name
-                            st.rerun()
-                        else:
-                            st.error("❌ Error al crear proyecto")
-        
-        # Lista de proyectos existentes
-        if user_projects:
-            st.markdown("**Proyectos existentes:**")
-            for project in user_projects:
-                if st.button(f"📂 {project['project_name']}", 
-                            key=f"proj_{project['project_id']}",
-                            use_container_width=True):
-                    st.session_state.current_project_id = project['project_id']
-                    st.session_state.current_project_name = project['project_name']
-                    st.rerun()
-        else:
-            st.info("👆 Crea tu primer proyecto para comenzar")
-    
-    # =========================================================================
-    # CONTENIDO PRINCIPAL SEGÚN ESTADO
-    # =========================================================================
-    
-    st.markdown(f"# 🌱 AgroPrint - Calculadora de Huella de Carbono")
-    
-    if not st.session_state.current_project_id:
-        # Pantalla de bienvenida sin proyecto seleccionado
-        if not user_projects:
-            st.markdown("""
-            ## 🎉 ¡Bienvenido a AgroPrint!
-            
-            **Para comenzar a calcular tu huella de carbono:**
-            
-            1. **Crea tu primer proyecto** usando el formulario en la barra lateral
-            2. **Completa la caracterización general** de tu cultivo
-            3. **Ingresa los datos** de fertilizantes, riego, maquinaria, etc.
-            4. **Obtén tus resultados** y análisis detallados
-            """)
-        else:
-            st.markdown("""
-            ## 📂 Selecciona un Proyecto
-            
-            **Elige uno de tus proyectos existentes** de la barra lateral o **crea uno nuevo** 
-            para comenzar a calcular la huella de carbono.
-            """)
-        
-        # Mostrar estadísticas rápidas si hay proyectos
-        if user_projects:
-            st.markdown("---")
-            st.markdown("### 📊 Tus Proyectos")
-            cols = st.columns(3)
-            with cols[0]:
-                st.metric("Total Proyectos", len(user_projects))
-            with cols[1]:
-                proyectos_anuales = len([p for p in user_projects if 'anual' in p['tipo'].lower()])
-                st.metric("Proyectos Anuales", proyectos_anuales)
-            with cols[2]:
-                proyectos_perennes = len([p for p in user_projects if 'perenne' in p['tipo'].lower()])
-                st.metric("Proyectos Perennes", proyectos_perennes)
-        
-        st.stop()
-    
-    # =========================================================================
-    # PROYECTO SELECCIONADO - CONTINUAR CON LA APLICACIÓN NORMAL
-    # =========================================================================
-    
-    st.markdown(f"## 📂 Proyecto: **{st.session_state.current_project_name}**")
-    
-    # Guardar datos de caracterización general automáticamente cuando se ingresen
-    # Esto se hará más adelante en el flujo
-    
-    return True  # Continuar con el flujo normal de la aplicación
-
 # --- DATOS DE ENTRADA ---
 st.set_page_config(layout="wide")
 
@@ -1140,59 +554,24 @@ def mostrar_bienvenida():
 
     st.markdown("---")
 
-# =============================================================================
-# FLUJO PRINCIPAL DE LA APLICACIÓN
-# =============================================================================
-
-# 1. Mostrar sistema de usuarios OBLIGATORIO
-if not mostrar_sistema_usuarios():
-    st.stop()  # Detener la app si no hay autenticación
-
-# 2. Mostrar bienvenida
+# Mostrar la bienvenida
 mostrar_bienvenida()
 
-# 3. Mostrar información de sesión en sidebar (opcional)
-if st.sidebar.checkbox("Mostrar información de sesión", False):
-    st.sidebar.info(f"""
-    **Información de Sesión:**
-    - ID: {st.session_state.session_id[:20]}...
-    - Consentimiento: ✅ Otorgado
-    - Hora: {datetime.now().strftime('%H:%M')}
-    """)
-
-# =============================================================================
-# INICIALIZACIÓN DE SESSION_STATE - REEMPLAZA VARIABLES GLOBALES
-# =============================================================================
-
-# Inicializar todas las variables en session_state si no existen
-if 'emisiones_etapas' not in st.session_state:
-    st.session_state.emisiones_etapas = {}
-
-if 'produccion_etapas' not in st.session_state:
-    st.session_state.produccion_etapas = {}
-
-if 'emisiones_fuentes' not in st.session_state:
-    st.session_state.emisiones_fuentes = {
-        "Fertilizantes": 0,
-        "Agroquímicos": 0,
-        "Riego": 0,
-        "Maquinaria": 0,
-        "Transporte": 0,
-        "Residuos": 0,
-        "Fin de vida": 0
-    }
-
-if 'emisiones_fuente_etapa' not in st.session_state:
-    st.session_state.emisiones_fuente_etapa = {}
-
-if 'modo_anterior' not in st.session_state:
-    st.session_state.modo_anterior = ""
-
-# Crear variables locales como referencias a session_state para facilitar el uso
-emisiones_etapas = st.session_state.emisiones_etapas
-produccion_etapas = st.session_state.produccion_etapas
-emisiones_fuentes = st.session_state.emisiones_fuentes
-emisiones_fuente_etapa = st.session_state.emisiones_fuente_etapa
+# -----------------------------
+# Inicialización de estructuras para guardar resultados
+# -----------------------------
+# Guardar resultados parciales para tablas y gráficos
+emisiones_etapas = {}         # Emisiones totales por etapa (kg CO2e/ha)
+produccion_etapas = {}        # Producción total por etapa (kg/ha)
+emisiones_fuentes = {         # Emisiones acumuladas por fuente (kg CO2e/ha)
+    "Fertilizantes": 0,
+    "Agroquímicos": 0,
+    "Riego": 0,
+    "Maquinaria": 0,
+    "Transporte": 0,
+    "Residuos": 0,
+    "Fin de vida": 0
+}
 
 # -----------------------------
 # Sección 1: Caracterización General
@@ -1202,29 +581,17 @@ cultivo = st.text_input("Nombre del cultivo o fruta")
 anual = st.radio("¿Es un cultivo anual o perenne?", ["Anual", "Perenne"])
 
 # --- Inicialización de resultados según modo anual/perenne ---
-if 'modo_anterior' not in st.session_state or st.session_state.modo_anterior != anual:
-    # Limpiar todas las estructuras de datos usando session_state
-    st.session_state.emisiones_etapas.clear()
-    st.session_state.produccion_etapas.clear()
-    
-    # Reiniciar emisiones_fuentes
-    for k in st.session_state.emisiones_fuentes:
-        st.session_state.emisiones_fuentes[k] = 0
-    
-    st.session_state.emisiones_anuales = []
-    st.session_state.emisiones_ciclos = []
-    st.session_state.modo_anterior = anual
-    st.session_state.emisiones_fuente_etapa = {}
-    
-    # Actualizar las referencias locales
+if 'modo_anterior' not in st.session_state or st.session_state['modo_anterior'] != anual:
     emisiones_etapas.clear()
     produccion_etapas.clear()
     for k in emisiones_fuentes:
         emisiones_fuentes[k] = 0
-    emisiones_fuente_etapa.clear()
+    st.session_state["emisiones_anuales"] = []
+    st.session_state["emisiones_ciclos"] = []
+    st.session_state['modo_anterior'] = anual
+    st.session_state['emisiones_fuente_etapa'] = {}
 
-# Asegurar que la referencia local esté actualizada
-emisiones_fuente_etapa = st.session_state.emisiones_fuente_etapa
+emisiones_fuente_etapa = st.session_state['emisiones_fuente_etapa']
 morfologia = st.selectbox("Morfología", ["Árbol", "Arbusto", "Hierba", "Otro"])
 ubicacion = st.text_input("Ubicación geográfica del cultivo (región, país)")
 tipo_suelo = st.selectbox("Tipo de suelo", [
@@ -1236,9 +603,24 @@ clima = st.selectbox("Zona agroclimática o clima predominante", [
 extra = st.text_area("Información complementaria (opcional)")
 
 # -----------------------------
+# Inicialización de estructuras para guardar resultados
+# -----------------------------
+# Guardar resultados parciales para tablas y gráficos
+emisiones_etapas = {}         # Emisiones totales por etapa (kg CO2e/ha)
+produccion_etapas = {}        # Producción total por etapa (kg/ha)
+emisiones_fuentes = {         # Emisiones acumuladas por fuente (kg CO2e/ha)
+    "Fertilizantes": 0,
+    "Agroquímicos": 0,
+    "Riego": 0,
+    "Maquinaria": 0,
+    "Transporte": 0,
+    "Residuos": 0,
+    "Fin de vida": 0
+}
+
+# -----------------------------
 # Funciones de ingreso y cálculo
 # -----------------------------
-
 def ingresar_fertilizantes(etapa, unidad_cantidad="ciclo"):
     st.markdown("##### Fertilizantes")
     tipos_inorg = list(factores_fertilizantes.keys())
@@ -1448,7 +830,7 @@ def calcular_emisiones_fertilizantes(fert_data, duracion):
     fertilizantes = fert_data.get("fertilizantes", [])
 
     emision_produccion = 0
-    emision_co2_urea = 0  # ✅ INICIALIZAR LA VARIABLE QUE FALTABA
+    emision_co2_urea = 0  # Nueva variable para emisiones CO2 por hidrólisis de urea
     n_aplicado_inorg = 0
     n_aplicado_org = 0
     volatilizacion_inorg = 0
@@ -3789,6 +3171,7 @@ import numpy as np
 ###################################################
 
 def mostrar_resultados_anual(em_total, prod_total):
+
     st.header("Resultados Finales")
     st.info(
         "En esta sección se presentan los resultados globales y desglosados del cálculo de huella de carbono para el cultivo anual. "
@@ -3797,30 +3180,17 @@ def mostrar_resultados_anual(em_total, prod_total):
         "Todos los gráficos muestran emisiones en kg CO₂e/ha·año."
     )
 
-        # --- INICIALIZAR VARIABLES QUE FALTABAN - VERSIÓN CORREGIDA ---
-    global emisiones_fuentes, emisiones_etapas, produccion_etapas, emisiones_fuente_etapa
-    
-    # Usar las variables de session_state que ya están inicializadas
-    emisiones_fuentes = st.session_state.emisiones_fuentes
-    emisiones_etapas = st.session_state.emisiones_etapas
-    produccion_etapas = st.session_state.produccion_etapas
-    emisiones_fuente_etapa = st.session_state.emisiones_fuente_etapa
-
     # --- RECONSTRUCCIÓN CORRECTA DE TOTALES GLOBALES DESDE EL DESGLOSE ---
     fuentes = ["Fertilizantes", "Agroquímicos", "Riego", "Maquinaria", "Residuos"]
     desglose_fuentes_ciclos = st.session_state.get("desglose_fuentes_ciclos", [])
     emisiones_fuentes_reales = {f: 0 for f in fuentes}
-    
     for ciclo in desglose_fuentes_ciclos:
         for f in fuentes:
             emisiones_fuentes_reales[f] += ciclo.get(f, 0)
-    
     # Actualiza los acumuladores globales
     for f in fuentes:
         emisiones_fuentes[f] = emisiones_fuentes_reales[f]
-    
     em_total = sum(emisiones_fuentes_reales.values())
-    
     # Si hay producción total, recalcúlala desde los ciclos
     emisiones_ciclos = st.session_state.get("emisiones_ciclos", [])
     prod_total = sum([c[2] for c in emisiones_ciclos]) if emisiones_ciclos else prod_total
@@ -3836,10 +3206,8 @@ def mostrar_resultados_anual(em_total, prod_total):
     # --- Gráficos globales de fuentes ---
     valores_fuentes = [emisiones_fuentes.get(f, 0) for f in fuentes]
     total_fuentes = sum(valores_fuentes)
-    
     st.markdown("#### % de contribución de cada fuente (global, kg CO₂e/ha·año)")
     col1, col2 = st.columns(2)
-    
     with col1:
         fig_bar = px.bar(
             x=fuentes,
@@ -3862,7 +3230,6 @@ def mostrar_resultados_anual(em_total, prod_total):
         fig_bar.update_layout(showlegend=False, height=400, separators=',.')
         fig_bar.update_yaxes(range=[0, y_max * 1.15])
         st.plotly_chart(fig_bar, use_container_width=True, key=get_unique_key())
-    
     with col2:
         if total_fuentes > 0:
             # Calcular porcentajes con formato español
@@ -4598,54 +3965,12 @@ def mostrar_resultados_anual(em_total, prod_total):
         "emisiones_fuente_etapa": emisiones_fuente_etapa.copy()
     }
 
-        # GUARDAR EN BASE DE DATOS - VERSIÓN CORREGIDA
-    if st.session_state.get('session_id'):
-        # Obtener variables del contexto global de manera segura
-        cultivo_val = cultivo if 'cultivo' in globals() else 'No especificado'
-        ubicacion_val = ubicacion if 'ubicacion' in globals() else 'No especificado'
-        tipo_suelo_val = tipo_suelo if 'tipo_suelo' in globals() else 'No especificado'
-        clima_val = clima if 'clima' in globals() else 'No especificado'
-        
-        # Obtener n_ciclos de manera segura desde session_state
-        n_ciclos_val = st.session_state.get('n_ciclos', 1)
-        
-        # Preparar datos para guardar
-        input_data = {
-            'tipo_analisis': 'anual',
-            'cultivo': cultivo_val,
-            'ubicacion': ubicacion_val,
-            'tipo_suelo': tipo_suelo_val,
-            'clima': clima_val,
-            'n_ciclos': n_ciclos_val,
-            'emisiones_totales': float(em_total) if em_total else 0,
-            'produccion_total': float(prod_total) if prod_total else 0,
-            'fecha_calculo': datetime.now().isoformat()
-        }
-        
-        # Convertir todos los valores a float para evitar problemas de serialización
-        results_data = {
-            'emisiones_fuentes': {k: float(v) for k, v in emisiones_fuentes.items()},
-            'emisiones_etapas': {k: float(v) for k, v in emisiones_etapas.items()},
-            'produccion_etapas': {k: float(v) for k, v in produccion_etapas.items()},
-            'emisiones_ciclos': st.session_state.get("emisiones_ciclos", []),
-            'huella_por_kg': float(em_total / prod_total) if prod_total > 0 else 0
-        }
-        
-        if guardar_calculo(
-            st.session_state.session_id,
-            'calculadora_anual',
-            input_data,
-            results_data
-        ):
-            st.sidebar.success("✅ Datos guardados correctamente en nuestra base de datos")
-        else:
-            st.sidebar.error("❌ Error al guardar los datos. Por favor, contacte al administrador.")
-
 ###################################################
 # RESULTADOS PARA CULTIVO PERENNE
 ###################################################
 
 def mostrar_resultados_perenne(em_total, prod_total):
+
     st.header("Resultados Finales")
     st.info(
         "En esta sección se presentan los resultados globales y desglosados del cálculo de huella de carbono para el cultivo perenne. "
@@ -4657,27 +3982,9 @@ def mostrar_resultados_perenne(em_total, prod_total):
     def limpiar_nombre(etapa):
         return etapa.replace("3.1 ", "").replace("3.2 ", "").replace("3.3 ", "").replace("3. ", "").strip()
 
-    # --- INICIALIZAR VARIABLES QUE FALTABAN ---
-    if 'emisiones_fuentes' not in globals():
-        emisiones_fuentes = {
-            "Fertilizantes": 0, "Agroquímicos": 0, "Riego": 0, 
-            "Maquinaria": 0, "Transporte": 0, "Residuos": 0, "Fin de vida": 0
-        }
-    
-    if 'emisiones_etapas' not in globals():
-        emisiones_etapas = {}
-    
-    if 'produccion_etapas' not in globals():
-        produccion_etapas = {}
-    
-    if 'emisiones_fuente_etapa' not in globals():
-        emisiones_fuente_etapa = {}
-
     # --- RECONSTRUCCIÓN CORRECTA DE TOTALES GLOBALES DESDE EL DESGLOSE ---
     fuentes = ["Fertilizantes", "Agroquímicos", "Riego", "Maquinaria", "Residuos"]
     etapas_ordenadas = []
-    
-    # Reconstruir el orden de etapas
     for clave in emisiones_etapas:
         if clave.lower().startswith("implantación"):
             etapas_ordenadas.append(clave)
@@ -4694,11 +4001,9 @@ def mostrar_resultados_perenne(em_total, prod_total):
         fuente_etapa = emisiones_fuente_etapa.get(etapa, {})
         for f in fuentes:
             emisiones_fuentes_reales[f] += fuente_etapa.get(f, 0)
-    
     # Actualiza los acumuladores globales
     for f in fuentes:
         emisiones_fuentes[f] = emisiones_fuentes_reales[f]
-    
     em_total = sum(emisiones_fuentes_reales.values())
     prod_total = sum([produccion_etapas.get(et, 0) for et in etapas_ordenadas])
 
@@ -4726,23 +4031,23 @@ def mostrar_resultados_perenne(em_total, prod_total):
             color="Etapa",
             color_discrete_sequence=px.colors.qualitative.Set2,
             title="Evolución de emisiones año a año",
-            text="Emisiones_texto"
+            text="Emisiones_texto"  # Agregar texto directamente en las barras
         )
         
         # Configurar posición del texto dentro de las barras
         fig_evol.update_traces(
-            textposition='inside',
-            textangle=0,
+            textposition='inside',  # Texto dentro de las barras
+            textangle=0,  # Texto horizontal
             textfont=dict(
                 size=10,
-                color='white'
+                color='white'  # Color blanco para contraste
             )
         )
         
         # Mejorar el layout para mejor visualización
         fig_evol.update_layout(
             showlegend=True, 
-            height=500,
+            height=500,  # Aumentar altura para mejor visualización
             xaxis_title="Año",
             yaxis_title="Huella de carbono (kg CO₂e/ha)",
             xaxis=dict(
@@ -4750,7 +4055,7 @@ def mostrar_resultados_perenne(em_total, prod_total):
                 tick0=df_evol["Año"].min(),
                 dtick=1
             ),
-            separators=',.'
+            separators=',.'  # Formato español
         )
         
         st.plotly_chart(fig_evol, use_container_width=True, key=get_unique_key())
@@ -5289,45 +4594,6 @@ def mostrar_resultados_perenne(em_total, prod_total):
         "emisiones_anuales": st.session_state.get("emisiones_anuales", [])
     }
 
-        # GUARDAR EN BASE DE DATOS - VERSIÓN CORREGIDA
-    if st.session_state.get('session_id'):
-        # Obtener variables del contexto global de manera segura
-        cultivo_val = cultivo if 'cultivo' in globals() else 'No especificado'
-        ubicacion_val = ubicacion if 'ubicacion' in globals() else 'No especificado'
-        tipo_suelo_val = tipo_suelo if 'tipo_suelo' in globals() else 'No especificado'
-        clima_val = clima if 'clima' in globals() else 'No especificado'
-        morfologia_val = morfologia if 'morfologia' in globals() else 'No especificado'
-        
-        # Preparar datos para guardar
-        input_data = {
-            'tipo_analisis': 'perenne',
-            'cultivo': cultivo_val,
-            'ubicacion': ubicacion_val,
-            'tipo_suelo': tipo_suelo_val,
-            'clima': clima_val,
-            'morfologia': morfologia_val,
-            'emisiones_totales': float(em_total) if em_total else 0,
-            'produccion_total': float(prod_total) if prod_total else 0,
-            'fecha_calculo': datetime.now().isoformat()
-        }
-        
-        results_data = {
-            'emisiones_fuentes': {k: float(v) for k, v in emisiones_fuentes.items()},
-            'emisiones_etapas': {k: float(v) for k, v in emisiones_etapas.items()},
-            'produccion_etapas': {k: float(v) for k, v in produccion_etapas.items()},
-            'huella_por_kg': float(em_total / prod_total) if prod_total > 0 else 0
-        }
-        
-        if guardar_calculo(
-            st.session_state.session_id,
-            'calculadora_perenne',
-            input_data,
-            results_data
-        ):
-            st.sidebar.success("✅ Datos guardados correctamente en nuestra base de datos")
-        else:
-            st.sidebar.error("❌ Error al guardar los datos. Por favor, contacte al administrador.")
-
 # -----------------------------
 # Interfaz principal
 # -----------------------------
@@ -5371,94 +4637,3 @@ elif anual.strip().lower() == "anual":
         mostrar_resultados_anual(em_total, prod_total)
 else:
     st.warning("Debe seleccionar si el cultivo es anual o perenne para continuar.")
-
-# =============================================================================
-# PANEL DE ADMINISTRACIÓN MEJORADO
-# =============================================================================
-
-def panel_administracion():
-    """Panel para que tú veas todos los datos guardados"""
-    st.sidebar.markdown("---")
-    if st.sidebar.checkbox("🔧 Panel de Administración (Solo Desarrollador)", False):
-        st.sidebar.warning("Acceso solo para administradores")
-        
-        if st.sidebar.text_input("Contraseña de administrador", type="password") == "admin123":
-            st.header("🔧 Panel de Administración - Todos los Datos")
-            
-            # Inicializar Google Sheets si no está en session_state
-            if 'spreadsheet' not in st.session_state:
-                st.session_state.spreadsheet = init_google_sheets()
-            
-            if st.session_state.spreadsheet is None:
-                st.error("No se pudo conectar a Google Sheets")
-                return
-            
-            user_manager = UserManager(st.session_state.spreadsheet)
-            project_manager = ProjectManager(st.session_state.spreadsheet)
-            
-            try:
-                # Estadísticas generales
-                st.subheader("📊 Estadísticas Generales")
-                
-                # Obtener datos de Google Sheets
-                users_sheet = st.session_state.spreadsheet.worksheet('usuarios')
-                projects_sheet = st.session_state.spreadsheet.worksheet('proyectos')
-                calculos_sheet = st.session_state.spreadsheet.worksheet('calculos')
-                caracterizacion_sheet = st.session_state.spreadsheet.worksheet('datos_caracterizacion')
-                
-                users_data = users_sheet.get_all_records()
-                projects_data = projects_sheet.get_all_records()
-                calculos_data = calculos_sheet.get_all_records()
-                caracterizacion_data = caracterizacion_sheet.get_all_records()
-                
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    st.metric("Total Usuarios", len(users_data))
-                with col2:
-                    st.metric("Total Proyectos", len(projects_data))
-                with col3:
-                    st.metric("Total Cálculos", len(calculos_data))
-                with col4:
-                    st.metric("Caracterizaciones", len(caracterizacion_data))
-                
-                # Pestañas para diferentes tipos de datos
-                tab1, tab2, tab3, tab4 = st.tabs(["👥 Usuarios", "📁 Proyectos", "📊 Cálculos", "🌱 Caracterización"])
-                
-                with tab1:
-                    st.subheader("Usuarios Registrados")
-                    if users_data:
-                        df_users = pd.DataFrame(users_data)
-                        st.dataframe(df_users)
-                    else:
-                        st.info("No hay usuarios registrados")
-                
-                with tab2:
-                    st.subheader("Proyectos de Usuarios")
-                    if projects_data:
-                        df_projects = pd.DataFrame(projects_data)
-                        st.dataframe(df_projects)
-                    else:
-                        st.info("No hay proyectos creados")
-                
-                with tab3:
-                    st.subheader("Cálculos Realizados")
-                    if calculos_data:
-                        df_calculos = pd.DataFrame(calculos_data)
-                        st.dataframe(df_calculos)
-                    else:
-                        st.info("No hay cálculos guardados")
-                
-                with tab4:
-                    st.subheader("Datos de Caracterización")
-                    if caracterizacion_data:
-                        df_caracterizacion = pd.DataFrame(caracterizacion_data)
-                        st.dataframe(df_caracterizacion)
-                    else:
-                        st.info("No hay datos de caracterización")
-                
-            except Exception as e:
-                st.error(f"Error accediendo a los datos: {e}")
-
-# Llamar al panel de administración al final
-panel_administracion()
